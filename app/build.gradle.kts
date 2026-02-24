@@ -13,7 +13,7 @@ android {
         minSdk          = 31          // S22 Ultra launched on Android 12
         targetSdk       = 35
         versionCode     = 1
-        versionName     = "0.1.0"
+        versionName     = "1.0.0-alpha01"
     }
 
     buildTypes {

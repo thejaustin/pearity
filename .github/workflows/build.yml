@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write   # required to create/update releases
+
 jobs:
   build:
     name: Build APK
@@ -30,9 +33,44 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Upload debug APK
+      - name: Rename APK
+        run: |
+          VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]+')
+          cp app/build/outputs/apk/debug/app-debug.apk pearity-${VERSION}.apk
+          echo "APK_NAME=pearity-${VERSION}.apk" >> $GITHUB_ENV
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: pearity-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/*.apk
+          path: ${{ env.APK_NAME }}
           retention-days: 30
+
+      - name: Publish to GitHub Releases
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-alpha01
+          name: Pearity v1.0.0-alpha01
+          prerelease: true
+          body: |
+            ## Pearity v1.0.0-alpha01 — Alpha Release
+
+            > **Alpha software** — settings are read/written via Shizuku or root.
+            > Not all settings may apply on every device. Samsung One UI is the primary target.
+
+            ### What's in this release
+            - 47 settings across 11 categories (Animations, Display, Text, Sound, Haptics, Keyboard, Navigation, Accessibility, Lock Screen, Samsung One UI, System)
+            - Three-state toggle per setting: **Android default** · **Custom** · **iOS parity**
+            - Shizuku, root (su), and ADB/rish connection modes
+            - Material 3 Expressive design with dynamic colour
+
+            ### Requirements
+            - Android 12+ (API 31)
+            - [Shizuku](https://github.com/RikkaApps/Shizuku) running **or** a rooted device
+
+            ### Install
+            1. Download `pearity-1.0.0-alpha01.apk` below
+            2. Enable *Install unknown apps* for your file manager
+            3. Install and launch Pearity
+          files: ${{ env.APK_NAME }}
