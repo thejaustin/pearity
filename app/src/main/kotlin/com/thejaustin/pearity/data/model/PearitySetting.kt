@@ -3,15 +3,17 @@ package com.thejaustin.pearity.data.model
 // ─── Categories ──────────────────────────────────────────────────────────────
 
 enum class SettingCategory(val displayName: String, val emoji: String) {
-    ANIMATIONS("Animations",    "⚡"),
-    DISPLAY   ("Display",       "🖥"),
-    TEXT      ("Text & Font",   "T"),
-    SOUND     ("Sound",         "🔊"),
-    HAPTICS   ("Haptics",       "📳"),
-    KEYBOARD  ("Keyboard",      "⌨"),
-    NAVIGATION("Navigation",    "◀"),
-    ACCESSIBILITY("Accessibility", "♿"),
-    SYSTEM    ("System",        "⚙"),
+    ANIMATIONS   ("Animations",        "⚡"),
+    DISPLAY      ("Display",           "🖥"),
+    TEXT         ("Text & Font",       "T"),
+    SOUND        ("Sound",             "🔊"),
+    HAPTICS      ("Haptics",           "📳"),
+    KEYBOARD     ("Keyboard",          "⌨"),
+    NAVIGATION   ("Navigation",        "◀"),
+    ACCESSIBILITY("Accessibility",     "♿"),
+    LOCK_SCREEN  ("Lock Screen",       "🔒"),
+    SAMSUNG      ("Samsung One UI",    "🌙"),
+    SYSTEM       ("System",            "⚙"),
 }
 
 // ─── Three-state toggle ───────────────────────────────────────────────────────

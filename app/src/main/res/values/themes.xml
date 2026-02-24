@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base theme: M3 NoActionBar — Compose handles everything above this -->
-    <!-- Compose-only app: use a built-in Android base; all real theming is in PearityTheme.kt -->
-    <style name="Theme.Pearity" parent="android:Theme.Material.NoTitleBar" />
+    <!-- Compose-only app: built-in platform base, no extra deps needed -->
+    <style name="Theme.Pearity" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>
