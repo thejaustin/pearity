@@ -31,43 +31,46 @@ object ShizukuHelper {
     }
 
     /**
-     * Execute [command] in a privileged shell via Shizuku.
-     * Returns [Result.success] with trimmed stdout, or [Result.failure] with the error message.
+     * Execute [command] via the rish shell, which routes through the Shizuku daemon.
+     * rish is Shizuku's own privileged shell binary — using it avoids the private
+     * Shizuku.newProcess() API while still running with elevated permissions.
+     *
+     * rish path is the one bundled by the user in Termux, confirmed present at runtime.
      */
     fun runCommand(command: String): Result<String> {
-        if (!isAvailable)    return Result.failure(Exception("Shizuku is not running"))
-        if (!hasPermission)  return Result.failure(Exception("Shizuku permission not granted"))
-
-        return try {
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
-            val stdout  = process.inputStream.bufferedReader().readText()
-            val stderr  = process.errorStream.bufferedReader().readText()
-            val exit    = process.waitFor()
-
-            if (exit != 0 && stderr.isNotBlank())
-                Result.failure(Exception("Exit $exit: $stderr"))
-            else
-                Result.success(stdout.trim())
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        if (!isAvailable)   return Result.failure(Exception("Shizuku is not running"))
+        if (!hasPermission) return Result.failure(Exception("Shizuku permission not granted"))
+        return runViaRish(command)
     }
 
-    /** ADB-compatible equivalent — run via `rish` if Shizuku is unavailable */
-    fun runCommandViaRish(command: String): Result<String> {
-        return try {
-            val process = Runtime.getRuntime()
-                .exec(arrayOf("/data/data/com.termux/files/home/rish", "-c", command))
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exit   = process.waitFor()
+    /** Fallback: run via rish without checking Shizuku permission state first */
+    fun runCommandViaRish(command: String): Result<String> = runViaRish(command)
 
-            if (exit != 0 && stderr.isNotBlank())
-                Result.failure(Exception("rish exit $exit: $stderr"))
-            else
-                Result.success(stdout.trim())
-        } catch (e: Exception) {
-            Result.failure(e)
+    private fun runViaRish(command: String): Result<String> {
+        // Try both the Termux-side rish and the system-side rish locations
+        val rishPaths = listOf(
+            "/data/data/com.termux/files/home/rish",
+            "/data/local/tmp/rish",
+        )
+
+        for (rishPath in rishPaths) {
+            if (!java.io.File(rishPath).exists()) continue
+            return try {
+                val process = Runtime.getRuntime()
+                    .exec(arrayOf(rishPath, "-c", command))
+                val stdout = process.inputStream.bufferedReader().readText()
+                val stderr = process.errorStream.bufferedReader().readText()
+                val exit   = process.waitFor()
+
+                if (exit != 0 && stderr.isNotBlank())
+                    Result.failure(Exception("rish exit $exit: $stderr"))
+                else
+                    Result.success(stdout.trim())
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         }
+
+        return Result.failure(Exception("rish not found — is Shizuku running?"))
     }
 }

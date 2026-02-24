@@ -24,10 +24,8 @@ object RootHelper {
             val process = Runtime.getRuntime().exec("su")
             val os = DataOutputStream(process.outputStream)
             
-            os.writeBytes("$command
-")
-            os.writeBytes("exit
-")
+            os.writeBytes("$command\n")
+            os.writeBytes("exit\n")
             os.flush()
             
             val stdout = process.inputStream.bufferedReader().readText()
