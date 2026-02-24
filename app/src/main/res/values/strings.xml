@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pearity</string>
+    <string name="app_tagline">iOS parity for Android</string>
+    <string name="state_android">Android</string>
+    <string name="state_custom">Custom</string>
+    <string name="state_ios">iOS</string>
+    <string name="shizuku_not_running">Shizuku not running</string>
+    <string name="shizuku_no_permission">Shizuku permission needed</string>
+    <string name="grant">Grant</string>
+    <string name="settings">Settings</string>
+</resources>
