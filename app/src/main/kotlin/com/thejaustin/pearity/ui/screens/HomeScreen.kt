@@ -1,5 +1,6 @@
 package com.thejaustin.pearity.ui.screens
 
+import android.app.Activity
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -29,7 +31,6 @@ fun HomeScreen(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    // Refresh Shizuku state each time the screen is visible
     LaunchedEffect(Unit) { viewModel.refreshShizuku() }
 
     Scaffold(
@@ -61,7 +62,7 @@ fun HomeScreen(
 
         if (ui.isLoading) {
             Box(
-                modifier        = Modifier.fillMaxSize().padding(padding),
+                modifier         = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator()
@@ -79,17 +80,19 @@ fun HomeScreen(
             if (!ui.shizukuAvailable || !ui.shizukuPermission) {
                 item(key = "shizuku_banner") {
                     ShizukuBanner(
-                        available      = ui.shizukuAvailable,
-                        hasPermission  = ui.shizukuPermission,
-                        onGrant        = viewModel::requestShizukuPermission,
-                        onRefresh      = viewModel::refreshShizuku,
+                        available     = ui.shizukuAvailable,
+                        hasPermission = ui.shizukuPermission,
+                        onGrant       = viewModel::requestShizukuPermission,
+                        onRefresh     = viewModel::refreshShizuku,
                     )
                 }
             }
 
+            // ── WRITE_SETTINGS banner ─────────────────────────────────────────
             if (!ui.writeSettingsGranted) {
-                val activity = androidx.compose.ui.platform.LocalContext.current as android.app.Activity
                 item(key = "write_settings_banner") {
+                    // LocalContext must be inside a Composable (item) scope
+                    val activity = LocalContext.current as Activity
                     WriteSettingsBanner(
                         onGrant   = { viewModel.requestWriteSettingsPermission(activity) },
                         onRefresh = viewModel::refreshShizuku,
@@ -107,60 +110,13 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold,
                         color      = MaterialTheme.colorScheme.primary,
                         modifier   = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                        )
-                    }
-                    
-                    @Composable
-                    private fun WriteSettingsBanner(
-                        onGrant: () -> Unit,
-                        onRefresh: () -> Unit,
-                    ) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(
-                                    "Modify System Settings permission missing",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    "Pearity needs this to change fonts, sounds, and other system-level values without Shizuku.",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = onGrant,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.error,
-                                            contentColor = MaterialTheme.colorScheme.onError
-                                        )
-                                    ) {
-                                        Text("Grant Permission")
-                                    }
-                                    TextButton(
-                                        onClick = onRefresh,
-                                        colors = ButtonDefaults.textButtonColors(
-                                            contentColor = MaterialTheme.colorScheme.error
-                                        )
-                                    ) {
-                                        Text("Refresh")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                                    items(settings, key = { it.setting.id }) { settingState ->
+                    )
+                }
+
+                items(settings, key = { it.setting.id }) { settingState ->
                     SettingCard(
-                        state         = settingState,
-                        onStateChange = { newState ->
+                        state          = settingState,
+                        onStateChange  = { newState ->
                             viewModel.applyState(settingState.setting.id, newState)
                         },
                         onSaveAsCustom = {
@@ -170,13 +126,12 @@ fun HomeScreen(
                 }
             }
 
-            // Bottom padding so last card clears nav bar
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }
 
-// ── Shizuku status banner ─────────────────────────────────────────────────────
+// ── Banners ───────────────────────────────────────────────────────────────────
 
 @Composable
 private fun ShizukuBanner(
@@ -186,18 +141,16 @@ private fun ShizukuBanner(
     onRefresh: () -> Unit,
 ) {
     val (title, body) = when {
-        !available    -> "Shizuku not running" to
-                         "Open the Shizuku app and start the service, then tap Refresh."
+        !available     -> "Shizuku not running" to
+                          "Open the Shizuku app and start the service, then tap Refresh."
         !hasPermission -> "Permission needed" to
-                         "Pearity needs the Shizuku permission to write privileged settings."
-        else          -> return
+                          "Pearity needs the Shizuku permission to write privileged settings."
+        else           -> return
     }
 
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-        ),
-        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        shape  = MaterialTheme.shapes.extraLarge,
     ) {
         Row(
             modifier              = Modifier.padding(16.dp),
@@ -211,9 +164,9 @@ private fun ShizukuBanner(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text      = title,
-                    style     = MaterialTheme.typography.titleSmall,
-                    color     = MaterialTheme.colorScheme.onErrorContainer,
+                    text       = title,
+                    style      = MaterialTheme.typography.titleSmall,
+                    color      = MaterialTheme.colorScheme.onErrorContainer,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
@@ -226,6 +179,43 @@ private fun ShizukuBanner(
                 TextButton(onClick = onRefresh) { Text("Refresh") }
             } else {
                 TextButton(onClick = onGrant)   { Text("Grant") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WriteSettingsBanner(
+    onGrant: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        shape  = MaterialTheme.shapes.extraLarge,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Modify System Settings permission missing",
+                style      = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Pearity needs this to change fonts, sounds, and other system-level values without Shizuku.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onGrant,
+                    colors  = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor   = MaterialTheme.colorScheme.onError,
+                    ),
+                ) { Text("Grant Permission") }
+                TextButton(onClick = onRefresh) { Text("Refresh") }
             }
         }
     }
