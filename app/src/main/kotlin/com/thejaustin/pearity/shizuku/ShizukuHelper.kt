@@ -2,6 +2,7 @@ package com.thejaustin.pearity.shizuku
 
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
+import rikka.shizuku.ShizukuRemoteProcess
 
 object ShizukuHelper {
 
@@ -37,7 +38,7 @@ object ShizukuHelper {
         if (!hasPermission)  return Result.failure(Exception("Shizuku permission not granted"))
 
         return try {
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
+            val process: ShizukuRemoteProcess = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
             val stdout  = process.inputStream.bufferedReader().readText()
             val stderr  = process.errorStream.bufferedReader().readText()
             val exit    = process.waitFor()

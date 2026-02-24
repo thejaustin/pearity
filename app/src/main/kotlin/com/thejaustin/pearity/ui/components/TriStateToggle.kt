@@ -16,7 +16,7 @@ import com.thejaustin.pearity.data.model.SettingState
  * Uses M3 SingleChoiceSegmentedButtonRow with spring-physics selection
  * per Material 3 Expressive motion guidelines.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TriStateToggle(
     state: SettingState,

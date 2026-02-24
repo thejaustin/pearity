@@ -1,8 +1,7 @@
 package com.thejaustin.pearity.ui.components
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Save
@@ -13,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import com.thejaustin.pearity.data.model.SettingState
 import com.thejaustin.pearity.viewmodel.SettingUiState
 
