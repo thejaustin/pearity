@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base theme: M3 NoActionBar — Compose handles everything above this -->
-    <style name="Theme.Pearity" parent="Theme.Material3.DayNight.NoActionBar" />
+    <!-- Compose-only app: use a built-in Android base; all real theming is in PearityTheme.kt -->
+    <style name="Theme.Pearity" parent="android:Theme.Material.NoTitleBar" />
 </resources>
