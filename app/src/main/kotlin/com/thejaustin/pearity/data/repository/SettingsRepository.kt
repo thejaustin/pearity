@@ -178,6 +178,26 @@ class SettingsRepository(private val context: Context) {
             requiresShizuku     = false,
         ),
 
+        // ── Keyboard ─────────────────────────────────────────────────────────
+        PearitySetting(
+            id                  = "autocorrect",
+            title               = "Auto-Correction",
+            subtitle            = "Keyboard auto-corrects words. iOS default: on",
+            category            = SettingCategory.KEYBOARD,
+            accessor            = SettingAccessor.SecureSetting("spell_checker_enabled"),
+            androidDefaultValue = "1",
+            iosDefaultValue     = "1",
+        ),
+        PearitySetting(
+            id                  = "predictive_text",
+            title               = "Predictive Text",
+            subtitle            = "Word suggestions above keyboard. iOS default: on",
+            category            = SettingCategory.KEYBOARD,
+            accessor            = SettingAccessor.SecureSetting("input_method_auto_fill"),
+            androidDefaultValue = "1",
+            iosDefaultValue     = "1",
+        ),
+
         // ── Navigation ────────────────────────────────────────────────────────
         PearitySetting(
             id                  = "back_gesture_inset_scale",
@@ -190,11 +210,60 @@ class SettingsRepository(private val context: Context) {
             unit                = "×",
         ),
 
+        // ── Accessibility ─────────────────────────────────────────────────────
+        PearitySetting(
+            id                  = "high_text_contrast",
+            title               = "Increase Contrast",
+            subtitle            = "Higher text/UI contrast (mirrors iOS Increase Contrast). Default: off",
+            category            = SettingCategory.ACCESSIBILITY,
+            accessor            = SettingAccessor.SecureSetting("high_text_contrast_enabled"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "0",
+        ),
+        PearitySetting(
+            id                  = "color_inversion",
+            title               = "Smart Invert / Color Inversion",
+            subtitle            = "Invert display colors. iOS Smart Invert default: off",
+            category            = SettingCategory.ACCESSIBILITY,
+            accessor            = SettingAccessor.SecureSetting("accessibility_display_inversion_enabled"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "0",
+        ),
+
+        // ── Display ───────────────────────────────────────────────────────────
+        PearitySetting(
+            id                  = "battery_percentage",
+            title               = "Battery Percentage in Status Bar",
+            subtitle            = "Show numeric % next to battery icon. iOS 16+ default: on",
+            category            = SettingCategory.DISPLAY,
+            accessor            = SettingAccessor.SecureSetting("status_bar_show_battery_percent"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "1",
+        ),
+        PearitySetting(
+            id                  = "notification_badging",
+            title               = "App Icon Badges",
+            subtitle            = "Badge counts on app icons. iOS default: on",
+            category            = SettingCategory.DISPLAY,
+            accessor            = SettingAccessor.SecureSetting("notification_badging"),
+            androidDefaultValue = "1",
+            iosDefaultValue     = "1",
+        ),
+        PearitySetting(
+            id                  = "night_display_auto",
+            title               = "Night Mode / True Tone",
+            subtitle            = "Scheduled blue-light reduction (analogous to iOS Night Shift)",
+            category            = SettingCategory.DISPLAY,
+            accessor            = SettingAccessor.SecureSetting("night_display_auto_mode"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "0",
+        ),
+
         // ── System ────────────────────────────────────────────────────────────
         PearitySetting(
             id                  = "auto_brightness",
             title               = "Automatic Brightness",
-            subtitle            = "Adaptive brightness (mirrors iOS auto-brightness)",
+            subtitle            = "Adaptive brightness (mirrors iOS auto-brightness). Default: on",
             category            = SettingCategory.SYSTEM,
             accessor            = SettingAccessor.SystemSetting("screen_brightness_mode"),
             androidDefaultValue = "1",
@@ -204,13 +273,31 @@ class SettingsRepository(private val context: Context) {
         PearitySetting(
             id                  = "screen_off_timeout",
             title               = "Screen Timeout",
-            subtitle            = "iOS default: 30s (30000ms). Samsung default: 15s",
+            subtitle            = "iOS default: 30s (30000ms). Samsung One UI default: 15s",
             category            = SettingCategory.SYSTEM,
             accessor            = SettingAccessor.SystemSetting("screen_off_timeout"),
             androidDefaultValue = "15000",
             iosDefaultValue     = "30000",
             requiresShizuku     = false,
             unit                = "ms",
+        ),
+        PearitySetting(
+            id                  = "location_mode",
+            title               = "Location Accuracy Mode",
+            subtitle            = "High accuracy GPS. iOS default: on when in use",
+            category            = SettingCategory.SYSTEM,
+            accessor            = SettingAccessor.SecureSetting("location_mode"),
+            androidDefaultValue = "3",
+            iosDefaultValue     = "3",
+        ),
+        PearitySetting(
+            id                  = "doze_always_on",
+            title               = "Always-On Display",
+            subtitle            = "AOD when screen off. iOS: off (no AOD). One UI default varies",
+            category            = SettingCategory.SYSTEM,
+            accessor            = SettingAccessor.SecureSetting("doze_always_on"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "0",
         ),
     )
 
