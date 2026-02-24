@@ -87,6 +87,16 @@ fun HomeScreen(
                 }
             }
 
+            if (!ui.writeSettingsGranted) {
+                val activity = androidx.compose.ui.platform.LocalContext.current as android.app.Activity
+                item(key = "write_settings_banner") {
+                    WriteSettingsBanner(
+                        onGrant   = { viewModel.requestWriteSettingsPermission(activity) },
+                        onRefresh = viewModel::refreshShizuku,
+                    )
+                }
+            }
+
             // ── Settings grouped by category ──────────────────────────────────
             ui.settingsByCategory.forEach { (categoryName, settings) ->
 
@@ -97,10 +107,57 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold,
                         color      = MaterialTheme.colorScheme.primary,
                         modifier   = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                    )
-                }
-
-                items(settings, key = { it.setting.id }) { settingState ->
+                        )
+                    }
+                    
+                    @Composable
+                    private fun WriteSettingsBanner(
+                        onGrant: () -> Unit,
+                        onRefresh: () -> Unit,
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    "Modify System Settings permission missing",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Pearity needs this to change fonts, sounds, and other system-level values without Shizuku.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = onGrant,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error,
+                                            contentColor = MaterialTheme.colorScheme.onError
+                                        )
+                                    ) {
+                                        Text("Grant Permission")
+                                    }
+                                    TextButton(
+                                        onClick = onRefresh,
+                                        colors = ButtonDefaults.textButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        Text("Refresh")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                                    items(settings, key = { it.setting.id }) { settingState ->
                     SettingCard(
                         state         = settingState,
                         onStateChange = { newState ->

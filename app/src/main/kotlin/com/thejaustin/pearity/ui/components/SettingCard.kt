@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,7 +32,9 @@ fun SettingCard(
     )
 
     Card(
-        modifier  = modifier.fillMaxWidth(),
+        modifier  = modifier
+            .fillMaxWidth()
+            .alpha(if (state.supported) 1f else 0.5f),
         shape     = MaterialTheme.shapes.extraLarge,
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
     ) {
@@ -66,7 +69,7 @@ fun SettingCard(
                     Spacer(Modifier.width(8.dp))
                     Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
                         Text(
-                            "Shizuku",
+                            if (state.supported) "Privileged" else "Locked",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 4.dp),
@@ -107,27 +110,34 @@ fun SettingCard(
                 TriStateToggle(
                     state         = state.state,
                     onStateChange = onStateChange,
+                    enabled       = state.supported,
                 )
             }
 
-            // ── Error message ─────────────────────────────────────────────────
+            // ── Error / Info message ──────────────────────────────────────────
             AnimatedVisibility(
-                visible = state.error != null,
+                visible = state.error != null || !state.supported,
                 enter   = expandVertically() + fadeIn(),
                 exit    = shrinkVertically() + fadeOut(),
             ) {
-                state.error?.let {
+                val message = when {
+                    state.error != null -> state.error
+                    !state.supported -> "This setting requires Root or Shizuku permission to modify."
+                    else -> null
+                }
+                message?.let {
                     Text(
                         text  = it,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                     )
                 }
             }
 
             // ── Save current as custom ────────────────────────────────────────
             AnimatedVisibility(
-                visible = state.state != SettingState.CUSTOM &&
+                visible = state.supported &&
+                          state.state != SettingState.CUSTOM &&
                           state.currentValue != null &&
                           state.currentValue != state.customValue,
             ) {

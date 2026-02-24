@@ -12,6 +12,8 @@ object ShizukuHelper {
             Shizuku.pingBinder()
         } catch (_: Exception) {
             false
+        } catch (_: NoClassDefFoundError) {
+            false
         }
 
     /** True if we hold the Shizuku API permission */

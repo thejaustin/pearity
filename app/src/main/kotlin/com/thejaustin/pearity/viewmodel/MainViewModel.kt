@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.thejaustin.pearity.data.model.PearitySetting
 import com.thejaustin.pearity.data.model.SettingState
 import com.thejaustin.pearity.data.repository.SettingsRepository
+import com.thejaustin.pearity.shizuku.RootHelper
 import com.thejaustin.pearity.shizuku.ShizukuHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,17 +30,20 @@ data class SettingUiState(
     val state: SettingState = SettingState.CUSTOM,
     val isApplying: Boolean  = false,
     val error: String?       = null,
+    val supported: Boolean   = true,
 )
 
 data class MainUiState(
     val settingsByCategory: Map<String, List<SettingUiState>> = emptyMap(),
     val shizukuAvailable: Boolean   = false,
     val shizukuPermission: Boolean  = false,
+    val rootAvailable: Boolean      = false,
+    val writeSettingsGranted: Boolean = false,
     val isLoading: Boolean          = true,
-    val connectionMode: ConnectionMode = ConnectionMode.SHIZUKU,
+    val connectionMode: ConnectionMode = ConnectionMode.AUTO,
 )
 
-enum class ConnectionMode { SHIZUKU, ADB_RISH }
+enum class ConnectionMode { AUTO, ROOT, SHIZUKU, ADB_RISH }
 
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
@@ -56,26 +60,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun load() {
         viewModelScope.launch {
+            _ui.value = _ui.value.copy(isLoading = true)
+            val mode = _ui.value.connectionMode
+
             val states = repo.allSettings.map { s ->
-                val live   = repo.readCurrentValue(s)
+                val live   = repo.readCurrentValue(s, mode)
                 // Load persisted custom value; fall back to the live value on first run
                 val custom = repo.loadCustomValue(s.id) ?: live
                 if (custom != null && repo.loadCustomValue(s.id) == null) {
                     repo.saveCustomValue(s.id, custom)
                 }
                 val state = repo.loadSettingState(s.id)
+                val supported = repo.isSupported(s, mode)
                 SettingUiState(
                     setting      = s,
                     currentValue = live,
                     customValue  = custom,
                     state        = state,
+                    supported    = supported,
                 )
             }
 
-            _ui.value = MainUiState(
+            _ui.value = _ui.value.copy(
                 settingsByCategory = states.groupBy { it.setting.category.displayName },
                 shizukuAvailable   = ShizukuHelper.isAvailable,
                 shizukuPermission  = ShizukuHelper.hasPermission,
+                rootAvailable      = RootHelper.isAvailable,
+                writeSettingsGranted = android.provider.Settings.System.canWrite(getApplication()),
                 isLoading          = false,
             )
         }
@@ -97,7 +108,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 SettingState.IOS             -> setting.iosDefaultValue
             }
 
-            val result = repo.applyValue(setting, targetValue)
+            val result = repo.applyValue(setting, targetValue, _ui.value.connectionMode)
             if (result.isSuccess) {
                 repo.saveSettingState(settingId, newState)
                 update(settingId) {
@@ -127,6 +138,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _ui.value = _ui.value.copy(
             shizukuAvailable  = ShizukuHelper.isAvailable,
             shizukuPermission = ShizukuHelper.hasPermission,
+            rootAvailable     = RootHelper.isAvailable,
+            writeSettingsGranted = android.provider.Settings.System.canWrite(getApplication()),
         )
     }
 
@@ -134,8 +147,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ShizukuHelper.requestPermission(REQUEST_CODE_SHIZUKU)
     }
 
+    fun requestWriteSettingsPermission(activity: android.app.Activity) {
+        val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS)
+        intent.data = android.net.Uri.parse("package:" + activity.packageName)
+        activity.startActivity(intent)
+    }
+
     fun setConnectionMode(mode: ConnectionMode) {
         _ui.value = _ui.value.copy(connectionMode = mode)
+        load() // Refresh with new mode
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
