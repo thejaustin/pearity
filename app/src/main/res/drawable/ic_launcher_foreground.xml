@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pear icon foreground — 108×108dp adaptive icon canvas.
+  Safe zone is center 72×72 (18dp inset on each side).
+  The pear body sits within the safe zone.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Pear body: narrow top bulge flowing into wider bottom bulge -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+          M54,22
+          C62,22 68,28 68,36
+          C68,43 64,49 58,53
+          C65,56 74,64 74,74
+          C74,85 65,91 54,91
+          C43,91 34,85 34,74
+          C34,64 43,56 50,53
+          C44,49 40,43 40,36
+          C40,28 46,22 54,22 Z" />
+
+    <!-- Stem -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M54,22 L54,15" />
+
+    <!-- Leaf -->
+    <path
+        android:fillColor="#AAD576"
+        android:pathData="
+          M54,17
+          C57,13 64,11 63,7
+          C60,11 56,14 54,17 Z" />
+
+</vector>
