@@ -12,8 +12,9 @@ android {
         applicationId   = "com.thejaustin.pearity"
         minSdk          = 31          // S22 Ultra launched on Android 12
         targetSdk       = 35
-        versionCode     = 1
-        versionName     = "1.0.0-alpha01"
+        // CI injects versionCode/versionName via -PversionCode= -PversionName=
+        versionCode     = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName     = (findProperty("versionName") as String?) ?: "1.0.0-alpha.dev"
     }
 
     buildTypes {

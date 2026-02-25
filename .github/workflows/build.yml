@@ -19,6 +19,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Compute version
+        id: version
+        run: |
+          N=${{ github.run_number }}
+
+          # Convert run number to a spelled ordinal word (1→one, 21→twenty-one, etc.)
+          ONES=("" one two three four five six seven eight nine \
+                ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen)
+          TENS=("" "" twenty thirty forty fifty sixty seventy eighty ninety)
+
+          if [ "$N" -lt 20 ]; then
+            ORDINAL="${ONES[$N]}"
+          else
+            T=$(( N / 10 ))
+            O=$(( N % 10 ))
+            if [ "$O" -eq 0 ]; then
+              ORDINAL="${TENS[$T]}"
+            else
+              ORDINAL="${TENS[$T]}-${ONES[$O]}"
+            fi
+          fi
+
+          VERSION_NAME="1.0.0-alpha.${ORDINAL}"
+          APK_NAME="pearity-${VERSION_NAME}.apk"
+          TAG="v${VERSION_NAME}"
+
+          echo "ordinal=${ORDINAL}"         >> "$GITHUB_OUTPUT"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${N}"          >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}"       >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}"                 >> "$GITHUB_OUTPUT"
+
+          echo "Version: ${VERSION_NAME} (code ${N})"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -31,46 +65,47 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
-
-      - name: Rename APK
         run: |
-          VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]+')
-          cp app/build/outputs/apk/debug/app-debug.apk pearity-${VERSION}.apk
-          echo "APK_NAME=pearity-${VERSION}.apk" >> $GITHUB_ENV
+          gradle assembleDebug \
+            -PversionName=${{ steps.version.outputs.version_name }} \
+            -PversionCode=${{ steps.version.outputs.version_code }} \
+            --no-daemon --stacktrace
 
-      - name: Upload debug APK artifact
+      - name: Locate and rename APK
+        run: |
+          # find the produced APK regardless of exact sub-path
+          SRC=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          echo "Found APK: ${SRC}"
+          cp "${SRC}" "${{ steps.version.outputs.apk_name }}"
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pearity-debug-${{ github.sha }}
-          path: ${{ env.APK_NAME }}
+          name: pearity-${{ steps.version.outputs.version_name }}-${{ github.sha }}
+          path: ${{ steps.version.outputs.apk_name }}
           retention-days: 30
 
       - name: Publish to GitHub Releases
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0-alpha01
-          name: Pearity v1.0.0-alpha01
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Pearity ${{ steps.version.outputs.version_name }}
           prerelease: true
           body: |
-            ## Pearity v1.0.0-alpha01 — Alpha Release
+            ## Pearity ${{ steps.version.outputs.version_name }}
 
             > **Alpha software** — settings are read/written via Shizuku or root.
             > Not all settings may apply on every device. Samsung One UI is the primary target.
 
-            ### What's in this release
-            - 47 settings across 11 categories (Animations, Display, Text, Sound, Haptics, Keyboard, Navigation, Accessibility, Lock Screen, Samsung One UI, System)
-            - Three-state toggle per setting: **Android default** · **Custom** · **iOS parity**
-            - Shizuku, root (su), and ADB/rish connection modes
-            - Material 3 Expressive design with dynamic colour
+            **Build:** `${{ github.sha }}` · run #${{ github.run_number }}
 
             ### Requirements
             - Android 12+ (API 31)
             - [Shizuku](https://github.com/RikkaApps/Shizuku) running **or** a rooted device
 
             ### Install
-            1. Download `pearity-1.0.0-alpha01.apk` below
-            2. Enable *Install unknown apps* for your file manager
+            1. Download the `.apk` file below
+            2. Enable *Install unknown apps* in your file manager / browser settings
             3. Install and launch Pearity
-          files: ${{ env.APK_NAME }}
+          files: ${{ steps.version.outputs.apk_name }}
