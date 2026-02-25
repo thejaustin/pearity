@@ -2,21 +2,28 @@ package com.thejaustin.pearity.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.AdminPanelSettings
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thejaustin.pearity.viewmodel.ConnectionMode
 import com.thejaustin.pearity.viewmodel.MainViewModel
+import com.thejaustin.pearity.utils.CrashHandler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,6 +32,43 @@ fun SettingsScreen(
     viewModel: MainViewModel = viewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var crashLog by remember { mutableStateOf<String?>(null) }
+    var showCrashDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        crashLog = CrashHandler.getCrashLog(context)
+    }
+
+    if (showCrashDialog && crashLog != null) {
+        AlertDialog(
+            onDismissRequest = { showCrashDialog = false },
+            title = { Text("Latest Crash Report") },
+            text = {
+                Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                    Text(
+                        text = crashLog!!,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { 
+                    CrashHandler.clearCrashLog(context)
+                    crashLog = null
+                    showCrashDialog = false
+                }) {
+                    Text("Clear Log")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCrashDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -82,21 +126,30 @@ fun SettingsScreen(
                 )
             }
 
-            // ── Root status ───────────────────────────────────────────────────
+            // ── Diagnostics ───────────────────────────────────────────────────
             item {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Root Status",
+                    "Diagnostics",
                     style      = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color      = MaterialTheme.colorScheme.primary,
                 )
             }
             item {
-                RootStatusCard(
-                    available = ui.rootAvailable,
-                    onRefresh = viewModel::refreshShizuku,
-                )
+                Card(shape = MaterialTheme.shapes.extraLarge) {
+                    ListItem(
+                        headlineContent = { Text("Crash Logs", style = MaterialTheme.typography.bodyMedium) },
+                        supportingContent = { Text(if (crashLog != null) "Recent crash detected" else "No recent crashes", style = MaterialTheme.typography.labelSmall) },
+                        trailingContent = {
+                            if (crashLog != null) {
+                                IconButton(onClick = { showCrashDialog = true }) {
+                                    Icon(Icons.Outlined.Info, contentDescription = "View Log")
+                                }
+                            }
+                        }
+                    )
+                }
             }
 
             // ── About ─────────────────────────────────────────────────────────

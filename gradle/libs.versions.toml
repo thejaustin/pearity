@@ -25,7 +25,7 @@ lifecycle-runtime        = { group = "androidx.lifecycle",         name = "lifec
 
 navigation-compose       = { group = "androidx.navigation",        name = "navigation-compose",             version.ref = "navigation" }
 
-shizuku-api              = { group = "dev.rikka.shizuku",          name = "api",                            version.ref = "shizuku" }
+shizuku-api              = { group = "com.github.thejaustin",      name = "ShizukuPlus-API",                version = "13.2.0-plus" }
 shizuku-provider         = { group = "dev.rikka.shizuku",          name = "provider",                       version.ref = "shizuku" }
 
 datastore                = { group = "androidx.datastore",         name = "datastore-preferences",          version.ref = "datastore" }

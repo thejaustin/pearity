@@ -10,7 +10,7 @@
     <!-- WRITE_SECURE_SETTINGS is NOT grantable at runtime; granted via Shizuku/ADB -->
     <!-- Listed here for documentation; Shizuku shells out the actual write -->
 
-    <application
+    <application android:name=".PearityApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

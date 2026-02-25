@@ -1,7 +1,9 @@
 package com.thejaustin.pearity.shizuku
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
+import java.io.File
 
 object ShizukuHelper {
 
@@ -34,27 +36,31 @@ object ShizukuHelper {
      * Execute [command] via the rish shell, which routes through the Shizuku daemon.
      * rish is Shizuku's own privileged shell binary — using it avoids the private
      * Shizuku.newProcess() API while still running with elevated permissions.
-     *
-     * rish path is the one bundled by the user in Termux, confirmed present at runtime.
      */
     fun runCommand(command: String): Result<String> {
         if (!isAvailable)   return Result.failure(Exception("Shizuku is not running"))
         if (!hasPermission) return Result.failure(Exception("Shizuku permission not granted"))
-        return runViaRish(command)
+        val result = runViaRish(command)
+        
+        // Split-brain prevention for Samsung devices
+        if (result.isSuccess && command.contains("settings put")) {
+            syncSamsungState()
+        }
+        
+        return result
     }
 
     /** Fallback: run via rish without checking Shizuku permission state first */
     fun runCommandViaRish(command: String): Result<String> = runViaRish(command)
 
     private fun runViaRish(command: String): Result<String> {
-        // Try both the Termux-side rish and the system-side rish locations
         val rishPaths = listOf(
             "/data/data/com.termux/files/home/rish",
             "/data/local/tmp/rish",
         )
 
         for (rishPath in rishPaths) {
-            if (!java.io.File(rishPath).exists()) continue
+            if (!File(rishPath).exists()) continue
             return try {
                 val process = Runtime.getRuntime()
                     .exec(arrayOf(rishPath, "-c", command))
@@ -72,5 +78,18 @@ object ShizukuHelper {
         }
 
         return Result.failure(Exception("rish not found — is Shizuku running?"))
+    }
+
+    /**
+     * Prevents "Split-Brain" on Samsung devices by forcing One UI to reconcile
+     * its proprietary database with the standard Android settings provider.
+     */
+    private fun syncSamsungState() {
+        try {
+            // Using rish to broadcast configuration change which triggers Samsung observers
+            runViaRish("am broadcast -a android.intent.action.CONFIGURATION_CHANGED")
+        } catch (e: Exception) {
+            // ignore
+        }
     }
 }
