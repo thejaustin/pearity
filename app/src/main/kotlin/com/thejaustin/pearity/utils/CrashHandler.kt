@@ -37,23 +37,14 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
         throwable.printStackTrace(PrintWriter(stackTrace))
         
         val report = buildString {
-            append("--- Pearity Crash Report ---
-")
-            append("Timestamp: ${Date()}
-")
-            append("Device: ${Build.MANUFACTURER} ${Build.MODEL}
-")
-            append("Android Version: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})
-")
-            append("Thread: ${thread.name}
-")
-            append("
-Stack Trace:
-")
+            append("--- Pearity Crash Report ---\n")
+            append("Timestamp: \${Date()}\n")
+            append("Device: \${Build.MANUFACTURER} \${Build.MODEL}\n")
+            append("Android Version: \${Build.VERSION.RELEASE} (SDK \${Build.VERSION.SDK_INT})\n")
+            append("Thread: \${thread.name}\n")
+            append("\nStack Trace:\n")
             append(stackTrace.toString())
-            append("
----------------------------
-")
+            append("\n---------------------------\n")
         }
 
         Log.e(TAG, "Uncaught Exception detected!")
@@ -63,7 +54,7 @@ Stack Trace:
             val file = File(context.filesDir, CRASH_LOG_FILE)
             file.writeText(report)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save crash log: ${e.message}")
+            Log.e(TAG, "Failed to save crash log: \${e.message}")
         }
 
         if (defaultHandler != null) {
