@@ -4,15 +4,9 @@ import android.app.Activity
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,32 +30,74 @@ fun HomeScreen(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var searchActive by remember { mutableStateOf(false) }
+    var navRailVisible by remember { mutableStateOf(true) }
+    val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) { viewModel.refreshShizuku() }
 
+    // Build category list with icons
+    val categories = remember {
+        listOf(
+            "Animations" to Icons.Outlined.SlowMotionVideo,
+            "Text & Font" to Icons.Outlined.Title,
+            "Sound" to Icons.Outlined.VolumeUp,
+            "Haptics" to Icons.Outlined.Vibration,
+            "Display" to Icons.Outlined.BrightnessHigh,
+            "Navigation" to Icons.Outlined.Swipe,
+            "Accessibility" to Icons.Outlined.Accessibility,
+            "Keyboard" to Icons.Outlined.Keyboard,
+            "Lock Screen" to Icons.Outlined.Lock,
+            "Samsung One UI" to Icons.Outlined.PhoneAndroid,
+            "System" to Icons.Outlined.Tune,
+        )
+    }
+
+    val visibleCategories = categories.filter { ui.settingsByCategory.containsKey(it.first) }
+
+    fun scrollToCategory(categoryName: String) {
+        // Calculate the target index based on list structure
+        var targetIndex = 0
+        // Count banners that appear before categories
+        if (ui.smartSwitchBackupFound) targetIndex++
+        if (!ui.shizukuAvailable || !ui.shizukuPermission) targetIndex++
+        if (!ui.writeSettingsGranted) targetIndex++
+        
+        // Find the category index
+        val categoryIndex = visibleCategories.indexOfFirst { it.first == categoryName }
+        if (categoryIndex != -1) {
+            targetIndex += categoryIndex
+            listState.animateScrollToItem(targetIndex)
+        }
+    }
+
     Row(modifier = Modifier.fillMaxSize()) {
         // ── Navigation Rail (Adaptive) ────────────────────────────────────────
-        NavigationRail(
-            modifier = Modifier.fillMaxHeight(),
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        AnimatedVisibility(
+            visible = navRailVisible,
+            enter = expandHorizontally() + fadeIn(),
+            exit = shrinkHorizontally() + fadeOut()
         ) {
-            Spacer(Modifier.height(12.dp))
-            NavigationRailItem(
-                selected = true,
-                onClick = { },
-                icon = { Icon(Icons.Outlined.Home, contentDescription = "Home") },
-                label = { Text("Home") }
-            )
-            NavigationRailItem(
-                selected = false,
-                onClick = onNavigateToSettings,
-                icon = { Icon(Icons.Outlined.Settings, contentDescription = "Settings") },
-                label = { Text("Config") }
-            )
+            NavigationRail(
+                modifier = Modifier.fillMaxHeight(),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                Spacer(Modifier.height(12.dp))
+                visibleCategories.forEach { (name, icon) ->
+                    NavigationRailItem(
+                        selected = false,
+                        onClick = { scrollToCategory(name) },
+                        icon = { Icon(icon, contentDescription = name) },
+                        label = { Text(name) }
+                    )
+                }
+            }
         }
 
         Scaffold(
-            modifier = Modifier.weight(1f).nestedScroll(scrollBehavior.nestedScrollConnection),
+            modifier = Modifier
+                .weight(1f)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .widthIn(min = 400.dp),
             topBar   = {
                 Column {
                     LargeTopAppBar(
@@ -85,7 +121,7 @@ fun HomeScreen(
                         },
                         scrollBehavior = scrollBehavior,
                     )
-                    
+
                     // ── Global Search Bar (M3 Expressive) ────────────────────────
                     SearchBar(
                         query = ui.searchQuery,
@@ -106,128 +142,152 @@ fun HomeScreen(
             },
         ) { padding ->
 
-        if (ui.isLoading) {
-            Box(
-                modifier         = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (ui.isLoading) {
+                Box(
+                    modifier         = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+                return@Scaffold
+            }
+
+            LazyColumn(
+                state               = listState,
+                modifier            = Modifier.fillMaxSize().padding(padding),
+                contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                CircularProgressIndicator()
-            }
-            return@Scaffold
-        }
 
-        LazyColumn(
-            modifier            = Modifier.fillMaxSize().padding(padding),
-            contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-
-            // ── Smart Switch Import banner ────────────────────────────────────
-            if (ui.smartSwitchBackupFound) {
-                item(key = "smart_switch_banner") {
-                    SmartSwitchBanner(
-                        deviceInfo = ui.smartSwitchDeviceInfo,
-                        appCount   = ui.smartSwitchApps.size,
-                        onImport   = viewModel::importSmartSwitchData,
-                    )
-                }
-            }
-
-            // ── Shizuku / connection banner ───────────────────────────────────
-            if (!ui.shizukuAvailable || !ui.shizukuPermission) {
-                item(key = "shizuku_banner") {
-                    ShizukuBanner(
-                        available     = ui.shizukuAvailable,
-                        hasPermission = ui.shizukuPermission,
-                        onGrant       = viewModel::requestShizukuPermission,
-                        onRefresh     = viewModel::refreshShizuku,
-                    )
-                }
-            }
-
-            // ── WRITE_SETTINGS banner ─────────────────────────────────────────
-            if (!ui.writeSettingsGranted) {
-                item(key = "write_settings_banner") {
-                    // LocalContext must be inside a Composable (item) scope
-                    val activity = LocalContext.current as Activity
-                    WriteSettingsBanner(
-                        onGrant   = { viewModel.requestWriteSettingsPermission(activity) },
-                        onRefresh = viewModel::refreshShizuku,
-                    )
-                }
-            }
-
-            // ── Settings grouped by category ──────────────────────────────────
-            ui.settingsByCategory.forEach { (categoryName, settings) ->
-
-                item(key = "header_$categoryName") {
-                    var expanded by remember { mutableStateOf(false) }
-                    
-                    Surface(
-                        onClick = { expanded = !expanded },
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = categoryName,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Icon(
-                                imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                // ── Smart Switch Import banner ────────────────────────────────────
+                if (ui.smartSwitchBackupFound) {
+                    item(key = "smart_switch_banner") {
+                        SmartSwitchBanner(
+                            deviceInfo = ui.smartSwitchDeviceInfo,
+                            appCount   = ui.smartSwitchApps.size,
+                            onImport   = viewModel::importSmartSwitchData,
+                        )
                     }
+                }
 
-                    AnimatedVisibility(
-                        visible = expanded,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(top = 8.dp)
+                // ── Shizuku / connection banner ───────────────────────────────────
+                if (!ui.shizukuAvailable || !ui.shizukuPermission) {
+                    item(key = "shizuku_banner") {
+                        ShizukuBanner(
+                            available     = ui.shizukuAvailable,
+                            hasPermission = ui.shizukuPermission,
+                            onGrant       = viewModel::requestShizukuPermission,
+                            onRefresh     = viewModel::refreshShizuku,
+                        )
+                    }
+                }
+
+                // ── WRITE_SETTINGS banner ─────────────────────────────────────────
+                if (!ui.writeSettingsGranted) {
+                    item(key = "write_settings_banner") {
+                        // LocalContext must be inside a Composable (item) scope
+                        val activity = LocalContext.current as Activity
+                        WriteSettingsBanner(
+                            onGrant   = { viewModel.requestWriteSettingsPermission(activity) },
+                            onRefresh = viewModel::refreshShizuku,
+                        )
+                    }
+                }
+
+                // ── Settings grouped by category ──────────────────────────────────
+                ui.settingsByCategory.forEach { (categoryName, settings) ->
+
+                    item(key = "header_$categoryName") {
+                        var expanded by remember { mutableStateOf(false) }
+
+                        Surface(
+                            onClick = { expanded = !expanded },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
                         ) {
-                            settings.forEach { settingState ->
-                                SettingCard(
-                                    state = settingState,
-                                    onStateChange = { newState ->
-                                        viewModel.applyState(settingState.setting.id, newState)
-                                    },
-                                    onSaveAsCustom = {
-                                        viewModel.saveCurrentAsCustom(settingState.setting.id)
-                                    },
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = categoryName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                Icon(
+                                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        AnimatedVisibility(
+                            visible = expanded,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                settings.forEach { settingState ->
+                                    SettingCard(
+                                        state = settingState,
+                                        onStateChange = { newState ->
+                                            viewModel.applyState(settingState.setting.id, newState)
+                                        },
+                                        onSaveAsCustom = {
+                                            viewModel.saveCurrentAsCustom(settingState.setting.id)
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
+                item { Spacer(Modifier.height(24.dp)) }
+
+                // ── Empty state for search ────────────────────────────────────────
+                if (ui.settingsByCategory.isEmpty() && ui.searchQuery.isNotEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No matching settings found",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
 
-            item { Spacer(Modifier.height(24.dp)) }
-
-            // ── Empty state for search ────────────────────────────────────────
-            if (ui.settingsByCategory.isEmpty() && ui.searchQuery.isNotEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No matching settings found",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+            // ── Bottom-left hamburger toggle for navigation rail ────────────────
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.BottomStart
+            ) {
+                FloatingActionButton(
+                    onClick = { navRailVisible = !navRailVisible },
+                    modifier = Modifier.size(56.dp),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Icon(
+                        imageVector = if (navRailVisible) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.Menu,
+                        contentDescription = if (navRailVisible) "Hide navigation" else "Show navigation",
+                    )
                 }
             }
         }

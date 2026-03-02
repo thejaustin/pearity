@@ -156,6 +156,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Import Smart Switch data from a user-selected URI (document tree).
+     */
+    fun importSmartSwitchFromUri(uri: android.net.Uri, context: android.content.Context) {
+        viewModelScope.launch {
+            try {
+                // Convert URI to path and scan for Smart Switch backup
+                val path = uri.path ?: return@launch
+                // Try to find the actual backup folder from the selected tree
+                val backupDir = java.io.File(path)
+                
+                // Check if this looks like a Smart Switch backup
+                val smartSwitchDir = if (backupDir.name == "SmartSwitch") backupDir else java.io.File(backupDir, "SmartSwitch")
+                val iosAppsFile = java.io.File(smartSwitchDir, "iosApps.json")
+                val devInfoFile = java.io.File(smartSwitchDir, "devInfo.json")
+                
+                if (!iosAppsFile.exists() && !devInfoFile.exists()) {
+                    // Try parent directory
+                    val parentDir = backupDir.parentFile
+                    if (parentDir != null) {
+                        val altSmartSwitch = java.io.File(parentDir, "SmartSwitch")
+                        if (java.io.File(altSmartSwitch, "iosApps.json").exists() || 
+                            java.io.File(altSmartSwitch, "devInfo.json").exists()) {
+                            // Found it
+                            val apps = SmartSwitchImporter.parseIosApps(altSmartSwitch)
+                            val devInfo = SmartSwitchImporter.parseDeviceInfo(altSmartSwitch)
+                            _ui.value = _ui.value.copy(
+                                smartSwitchBackupFound = true,
+                                smartSwitchBackupDir = altSmartSwitch.absolutePath,
+                                smartSwitchApps = apps,
+                                smartSwitchDeviceInfo = devInfo,
+                            )
+                            importSmartSwitchData()
+                            return@launch
+                        }
+                    }
+                    return@launch // Not a valid backup
+                }
+                
+                val apps = SmartSwitchImporter.parseIosApps(smartSwitchDir)
+                val devInfo = SmartSwitchImporter.parseDeviceInfo(smartSwitchDir)
+                
+                _ui.value = _ui.value.copy(
+                    smartSwitchBackupFound = true,
+                    smartSwitchBackupDir = smartSwitchDir.absolutePath,
+                    smartSwitchApps = apps,
+                    smartSwitchDeviceInfo = devInfo,
+                )
+                
+                // Auto-import after successful selection
+                importSmartSwitchData()
+            } catch (e: Exception) {
+                // Handle error silently - UI will show no backup found
+            }
+        }
+    }
+
     // ── Apply a state change ──────────────────────────────────────────────────
 
     fun applyState(settingId: String, newState: SettingState) {

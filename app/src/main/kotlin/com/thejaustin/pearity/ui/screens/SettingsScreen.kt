@@ -1,17 +1,16 @@
 package com.thejaustin.pearity.ui.screens
 
+import android.app.Activity
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Cable
-import androidx.compose.material.icons.outlined.Hub
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.AdminPanelSettings
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +23,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thejaustin.pearity.viewmodel.ConnectionMode
 import com.thejaustin.pearity.viewmodel.MainViewModel
 import com.thejaustin.pearity.utils.CrashHandler
+import com.thejaustin.pearity.utils.SmartSwitchImporter
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +36,19 @@ fun SettingsScreen(
     val context = LocalContext.current
     var crashLog by remember { mutableStateOf<String?>(null) }
     var showCrashDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importStatus by remember { mutableStateOf<String?>(null) }
+    var importError by remember { mutableStateOf<String?>(null) }
+
+    // Document picker for manual Smart Switch backup import
+    val backupPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let { selectedUri ->
+            // Convert URI to path and scan for Smart Switch backup
+            viewModel.importSmartSwitchFromUri(selectedUri, context)
+        }
+    }
 
     LaunchedEffect(Unit) {
         crashLog = CrashHandler.getCrashLog(context)
@@ -65,6 +79,40 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showCrashDialog = false }) {
                     Text("Close")
+                }
+            }
+        )
+    }
+
+    // Import dialog
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            icon = { Icon(Icons.Outlined.Smartphone, contentDescription = null) },
+            title = { Text("Import iOS Backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select your Smart Switch backup folder to import iOS settings.")
+                    if (importError != null) {
+                        Text(
+                            text = importError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showImportDialog = false
+                    backupPicker.launch(null)
+                }) {
+                    Text("Select Folder")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -123,6 +171,27 @@ fun SettingsScreen(
                     hasPermission = ui.shizukuPermission,
                     onRefresh     = viewModel::refreshShizuku,
                     onGrant       = viewModel::requestShizukuPermission,
+                )
+            }
+
+            // ── Smart Switch Import ───────────────────────────────────────────
+            item {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "iOS Backup Import",
+                    style      = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color      = MaterialTheme.colorScheme.primary,
+                )
+            }
+            item {
+                SmartSwitchImportCard(
+                    hasBackup = ui.smartSwitchBackupFound,
+                    backupPath = ui.smartSwitchBackupDir,
+                    appCount = ui.smartSwitchApps.size,
+                    deviceModel = ui.smartSwitchDeviceInfo?.model,
+                    onImport = { showImportDialog = true },
+                    onAutoImport = viewModel::importSmartSwitchData,
                 )
             }
 
@@ -286,5 +355,84 @@ private fun StatusRow(label: String, ok: Boolean) {
             fontWeight = FontWeight.Bold,
         )
         Text(label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+// ── Smart Switch Import Card ──────────────────────────────────────────────────
+
+@Composable
+private fun SmartSwitchImportCard(
+    hasBackup: Boolean,
+    backupPath: String?,
+    appCount: Int,
+    deviceModel: String?,
+    onImport: () -> Unit,
+    onAutoImport: () -> Unit,
+) {
+    Card(shape = MaterialTheme.shapes.extraLarge) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Smartphone,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Import from iOS Backup",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (hasBackup) {
+                        Text(
+                            "Found backup: ${deviceModel ?: "iPhone"} with $appCount apps",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            "Manually select a Smart Switch backup folder",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedButton(
+                    onClick = onImport,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Select Folder")
+                }
+                if (hasBackup) {
+                    Button(
+                        onClick = onAutoImport,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Import Now")
+                    }
+                }
+            }
+            if (backupPath != null) {
+                Text(
+                    "Path: $backupPath",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
