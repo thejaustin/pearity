@@ -8,6 +8,7 @@ shizuku = "13.1.5"
 datastore = "1.1.1"
 activity = "1.9.3"
 coroutines = "1.8.1"
+kotlinx-serialization = "1.7.3"
 
 [libraries]
 compose-bom              = { group = "androidx.compose",          name = "compose-bom",                    version.ref = "compose-bom" }
@@ -15,7 +16,7 @@ compose-ui               = { group = "androidx.compose.ui",       name = "ui" }
 compose-ui-graphics      = { group = "androidx.compose.ui",       name = "ui-graphics" }
 compose-ui-tooling       = { group = "androidx.compose.ui",       name = "ui-tooling" }
 compose-ui-tooling-prev  = { group = "androidx.compose.ui",       name = "ui-tooling-preview" }
-compose-material3        = { group = "androidx.compose.material3", name = "material3" }
+compose-material3        = { group = "androidx.compose.material3", name = "material3", version = "1.4.0-alpha14" }
 compose-icons-extended   = { group = "androidx.compose.material",  name = "material-icons-extended" }
 compose-activity         = { group = "androidx.activity",          name = "activity-compose",               version.ref = "activity" }
 compose-animation        = { group = "androidx.compose.animation", name = "animation" }
@@ -30,6 +31,7 @@ shizuku-provider         = { group = "dev.rikka.shizuku",          name = "provi
 
 datastore                = { group = "androidx.datastore",         name = "datastore-preferences",          version.ref = "datastore" }
 coroutines               = { group = "org.jetbrains.kotlinx",      name = "kotlinx-coroutines-android",     version.ref = "coroutines" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx",    name = "kotlinx-serialization-json",     version.ref = "kotlinx-serialization" }
 
 [plugins]
 android-application      = { id = "com.android.application",            version.ref = "agp" }

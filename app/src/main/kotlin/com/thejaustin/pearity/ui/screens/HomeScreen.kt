@@ -6,7 +6,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,35 +35,76 @@ fun HomeScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var searchActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.refreshShizuku() }
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar   = {
-            LargeTopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text       = "Pearity",
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                        Text(
-                            text  = "iOS parity for One UI",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
-                    }
-                },
-                scrollBehavior = scrollBehavior,
+    Row(modifier = Modifier.fillMaxSize()) {
+        // ── Navigation Rail (Adaptive) ────────────────────────────────────────
+        NavigationRail(
+            modifier = Modifier.fillMaxHeight(),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ) {
+            Spacer(Modifier.height(12.dp))
+            NavigationRailItem(
+                selected = true,
+                onClick = { },
+                icon = { Icon(Icons.Outlined.Home, contentDescription = "Home") },
+                label = { Text("Home") }
             )
-        },
-    ) { padding ->
+            NavigationRailItem(
+                selected = false,
+                onClick = onNavigateToSettings,
+                icon = { Icon(Icons.Outlined.Settings, contentDescription = "Settings") },
+                label = { Text("Config") }
+            )
+        }
+
+        Scaffold(
+            modifier = Modifier.weight(1f).nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar   = {
+                Column {
+                    LargeTopAppBar(
+                        title = {
+                            Column {
+                                Text(
+                                    text       = "Pearity",
+                                    fontWeight = FontWeight.ExtraBold,
+                                )
+                                Text(
+                                    text  = "iOS parity for One UI",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = onNavigateToSettings) {
+                                Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                            }
+                        },
+                        scrollBehavior = scrollBehavior,
+                    )
+                    
+                    // ── Global Search Bar (M3 Expressive) ────────────────────────
+                    SearchBar(
+                        query = ui.searchQuery,
+                        onQueryChange = viewModel::onSearchQueryChanged,
+                        onSearch = { searchActive = false },
+                        active = searchActive,
+                        onActiveChange = { searchActive = it },
+                        placeholder = { Text("Search settings...") },
+                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = if (searchActive) 0.dp else 16.dp)
+                            .padding(bottom = if (searchActive) 0.dp else 8.dp)
+                    ) {
+                        // Results are shown in the main list below
+                    }
+                }
+            },
+        ) { padding ->
 
         if (ui.isLoading) {
             Box(
@@ -75,6 +121,17 @@ fun HomeScreen(
             contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+
+            // ── Smart Switch Import banner ────────────────────────────────────
+            if (ui.smartSwitchBackupFound) {
+                item(key = "smart_switch_banner") {
+                    SmartSwitchBanner(
+                        deviceInfo = ui.smartSwitchDeviceInfo,
+                        appCount   = ui.smartSwitchApps.size,
+                        onImport   = viewModel::importSmartSwitchData,
+                    )
+                }
+            }
 
             // ── Shizuku / connection banner ───────────────────────────────────
             if (!ui.shizukuAvailable || !ui.shizukuPermission) {
@@ -104,34 +161,131 @@ fun HomeScreen(
             ui.settingsByCategory.forEach { (categoryName, settings) ->
 
                 item(key = "header_$categoryName") {
-                    Text(
-                        text       = categoryName,
-                        style      = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color      = MaterialTheme.colorScheme.primary,
-                        modifier   = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                    )
-                }
+                    var expanded by remember { mutableStateOf(false) }
+                    
+                    Surface(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = categoryName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
 
-                items(settings, key = { it.setting.id }) { settingState ->
-                    SettingCard(
-                        state          = settingState,
-                        onStateChange  = { newState ->
-                            viewModel.applyState(settingState.setting.id, newState)
-                        },
-                        onSaveAsCustom = {
-                            viewModel.saveCurrentAsCustom(settingState.setting.id)
-                        },
-                    )
+                    AnimatedVisibility(
+                        visible = expanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            settings.forEach { settingState ->
+                                SettingCard(
+                                    state = settingState,
+                                    onStateChange = { newState ->
+                                        viewModel.applyState(settingState.setting.id, newState)
+                                    },
+                                    onSaveAsCustom = {
+                                        viewModel.saveCurrentAsCustom(settingState.setting.id)
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
             item { Spacer(Modifier.height(24.dp)) }
+
+            // ── Empty state for search ────────────────────────────────────────
+            if (ui.settingsByCategory.isEmpty() && ui.searchQuery.isNotEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No matching settings found",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 // ── Banners ───────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SmartSwitchBanner(
+    deviceInfo: com.thejaustin.pearity.utils.SmartSwitchDeviceInfo?,
+    appCount: Int,
+    onImport: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        ),
+        shape  = MaterialTheme.shapes.extraLarge,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector        = Icons.Outlined.Sync,
+                    contentDescription = null,
+                    tint               = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text       = "iPhone Backup Found",
+                        style      = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color      = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    Text(
+                        text  = "Detected ${deviceInfo?.model ?: "iPhone"} with $appCount apps transferred. Import your setup?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onImport,
+                colors  = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiary,
+                    contentColor   = MaterialTheme.colorScheme.onTertiary,
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Match My Previous Setup")
+            }
+        }
+    }
+}
 
 @Composable
 private fun ShizukuBanner(

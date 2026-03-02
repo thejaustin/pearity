@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -82,26 +83,39 @@ fun SettingCard(
             // ── Value comparison chips ────────────────────────────────────────
             Row(
                 modifier              = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment     = Alignment.CenterVertically
             ) {
                 ValueChip(
                     label    = "Android",
                     value    = state.setting.androidDefaultValue + state.setting.unit,
                     modifier = Modifier.weight(1f),
-                    tint     = false,
                 )
-                ValueChip(
-                    label    = "Current",
-                    value    = (state.currentValue ?: "—") + state.setting.unit,
-                    modifier = Modifier.weight(1f),
-                    tint     = true,
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
                 ValueChip(
                     label    = "iOS",
                     value    = state.setting.iosDefaultValue + state.setting.unit,
                     modifier = Modifier.weight(1f),
-                    tint     = false,
                 )
+                
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    Text(
+                        text = (state.currentValue ?: "—") + state.setting.unit,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
 
             // ── Progress / toggle ─────────────────────────────────────────────
@@ -112,6 +126,7 @@ fun SettingCard(
                     state         = state.state,
                     onStateChange = onStateChange,
                     enabled       = state.supported,
+                    modifier      = Modifier.height(32.dp) // Compact toggle
                 )
             }
 
@@ -164,17 +179,9 @@ private fun ValueChip(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    tint: Boolean = false,
 ) {
-    val containerColor = if (tint)
-        MaterialTheme.colorScheme.primaryContainer
-    else
-        MaterialTheme.colorScheme.surfaceVariant
-
-    val contentColor = if (tint)
-        MaterialTheme.colorScheme.onPrimaryContainer
-    else
-        MaterialTheme.colorScheme.onSurfaceVariant
+    val containerColor = MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
         modifier  = modifier,

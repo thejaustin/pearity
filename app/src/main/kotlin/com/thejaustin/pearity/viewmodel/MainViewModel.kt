@@ -8,6 +8,9 @@ import com.thejaustin.pearity.data.model.SettingState
 import com.thejaustin.pearity.data.repository.SettingsRepository
 import com.thejaustin.pearity.shizuku.RootHelper
 import com.thejaustin.pearity.shizuku.ShizukuHelper
+import com.thejaustin.pearity.utils.SmartSwitchApp
+import com.thejaustin.pearity.utils.SmartSwitchDeviceInfo
+import com.thejaustin.pearity.utils.SmartSwitchImporter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +44,11 @@ data class MainUiState(
     val writeSettingsGranted: Boolean = false,
     val isLoading: Boolean          = true,
     val connectionMode: ConnectionMode = ConnectionMode.AUTO,
+    val smartSwitchBackupFound: Boolean = false,
+    val smartSwitchBackupDir: String? = null,
+    val smartSwitchApps: List<SmartSwitchApp> = emptyList(),
+    val smartSwitchDeviceInfo: SmartSwitchDeviceInfo? = null,
+    val searchQuery: String = "",
 )
 
 enum class ConnectionMode { AUTO, ROOT, SHIZUKU, ADB_RISH }
@@ -54,6 +62,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _ui = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _ui.asStateFlow()
 
+    private var _allSettings: List<SettingUiState> = emptyList()
+
     init { load() }
 
     // ── Initialise ────────────────────────────────────────────────────────────
@@ -62,6 +72,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _ui.value = _ui.value.copy(isLoading = true)
             val mode = _ui.value.connectionMode
+
+            // Check Smart Switch backup
+            val backupDir = SmartSwitchImporter.findLatestBackupDir()
+            val apps = backupDir?.let { SmartSwitchImporter.parseIosApps(it) } ?: emptyList()
+            val devInfo = backupDir?.let { SmartSwitchImporter.parseDeviceInfo(it) }
 
             val states = repo.allSettings.map { s ->
                 val live   = repo.readCurrentValue(s, mode)
@@ -81,6 +96,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
+            _allSettings = states
+
             _ui.value = _ui.value.copy(
                 settingsByCategory = states.groupBy { it.setting.category.displayName },
                 shizukuAvailable   = ShizukuHelper.isAvailable,
@@ -88,7 +105,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 rootAvailable      = RootHelper.isAvailable,
                 writeSettingsGranted = android.provider.Settings.System.canWrite(getApplication()),
                 isLoading          = false,
+                smartSwitchBackupFound = backupDir != null,
+                smartSwitchBackupDir = backupDir?.absolutePath,
+                smartSwitchApps = apps,
+                smartSwitchDeviceInfo = devInfo,
             )
+        }
+    }
+
+    // ── Search ────────────────────────────────────────────────────────────────
+
+    fun onSearchQueryChanged(query: String) {
+        _ui.value = _ui.value.copy(searchQuery = query)
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val query = _ui.value.searchQuery.lowercase()
+        
+        val filtered = if (query.isEmpty()) {
+            _allSettings
+        } else {
+            _allSettings.filter { 
+                it.setting.title.lowercase().contains(query) || 
+                it.setting.subtitle.lowercase().contains(query) ||
+                it.setting.category.displayName.lowercase().contains(query)
+            }
+        }
+
+        _ui.value = _ui.value.copy(
+            settingsByCategory = filtered.groupBy { it.setting.category.displayName }
+        )
+    }
+
+    // ── Smart Switch Import ──────────────────────────────────────────────────
+
+    fun importSmartSwitchData() {
+        viewModelScope.launch {
+            val backupDir = _ui.value.smartSwitchBackupDir?.let { java.io.File(it) }
+            val suggestions = SmartSwitchImporter.suggestSettings(
+                _ui.value.smartSwitchApps,
+                _ui.value.smartSwitchDeviceInfo,
+                backupDir
+            )
+
+            suggestions.forEach { (id, value) ->
+                // Automatically apply the iOS state if it matches our suggestion
+                applyState(id, SettingState.IOS)
+            }
         }
     }
 
