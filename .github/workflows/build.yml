@@ -61,15 +61,19 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
+        continue-on-error: true  # Ignore cache service failures
         with:
           gradle-version: '8.10.2'
+          cache-disabled: false
+          cache-read-only: ${{ github.event_name != 'push' }}
+          gradle-home-cache-cleanup: true
 
       - name: Build debug APK
         run: |
           gradle assembleDebug \
             -PversionName=${{ steps.version.outputs.version_name }} \
             -PversionCode=${{ steps.version.outputs.version_code }} \
-            --no-daemon --stacktrace
+            --no-daemon --no-configuration-cache
 
       - name: Locate and rename APK
         run: |
