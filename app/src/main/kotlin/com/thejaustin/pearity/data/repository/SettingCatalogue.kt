@@ -344,7 +344,8 @@ object SettingCatalogue {
             title               = "One-Handed Mode",
             subtitle            = "Shrinks screen for one-thumb reach. iOS Reachability default: off",
             category            = SettingCategory.ACCESSIBILITY,
-            accessor            = SettingAccessor.SecureSetting("one_handed_enabled"),
+            // AOSP (Android 12+) constant is ONE_HANDED_MODE_ENABLED — "one_handed_enabled" doesn't exist.
+            accessor            = SettingAccessor.SecureSetting("one_handed_mode_enabled"),
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
         ),
