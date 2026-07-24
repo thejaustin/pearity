@@ -74,6 +74,27 @@ jobs:
             echo "No keystore secret set; falling back to runner-generated debug keystore"
           fi
 
+      # Catches the exact failure mode that broke every release before the persistent keystore
+      # was introduced: a corrupted/regenerated secret would silently produce a differently
+      # signed APK, and users would only find out when their next update refused to install.
+      - name: Verify keystore fingerprint
+        env:
+          KEYSTORE_B64: ${{ secrets.PEARITY_DEBUG_KEYSTORE_B64 }}
+          EXPECTED_SHA256: "9A:76:42:6F:D8:8E:95:D9:89:25:51:C3:9B:10:E6:14:B6:58:52:FE:BD:88:5E:0C:B0:E7:0B:25:64:6B:E4:79"
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "No keystore secret set; skipping fingerprint check (build already using a runner-generated keystore)"
+            exit 0
+          fi
+          ACTUAL_SHA256=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey \
+            | grep "SHA256:" | head -1 | sed 's/.*SHA256: //')
+          echo "Expected: $EXPECTED_SHA256"
+          echo "Actual:   $ACTUAL_SHA256"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Keystore fingerprint mismatch — PEARITY_DEBUG_KEYSTORE_B64 does not match the expected signing cert. Publishing would break updates for existing users."
+            exit 1
+          fi
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         continue-on-error: true  # Ignore cache service failures
@@ -92,6 +113,21 @@ jobs:
             -PversionName=${{ steps.version.outputs.version_name }} \
             -PversionCode=${{ steps.version.outputs.version_code }} \
             --no-daemon --no-configuration-cache
+
+      # AGP's built-in Android Lint — no extra tooling/config needed. Catches Android-specific
+      # issues unit tests can't (manifest problems, invalid resource refs, deprecated API usage).
+      # Only fails the build on lint-error severity, not warnings.
+      - name: Run Android Lint
+        run: gradle lintDebug --no-daemon --no-configuration-cache
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report-${{ github.sha }}
+          path: app/build/reports/lint-results-debug.html
+          retention-days: 30
+          if-no-files-found: ignore
 
       # Only the debug APK ships (see "Publish to GitHub Releases" below); this build is a
       # smoke test only, unsigned and discarded. It exists because minification (isMinifyEnabled

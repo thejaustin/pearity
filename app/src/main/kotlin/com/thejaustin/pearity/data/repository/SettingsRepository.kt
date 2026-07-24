@@ -20,6 +20,14 @@ import kotlinx.coroutines.withContext
 private val Context.dataStore: DataStore<Preferences>
         by preferencesDataStore(name = "pearity")
 
+/**
+ * Outcome of [SettingsRepository.applyValue]. Android's Settings provider accepts writes to
+ * any key with no schema validation, so a write returning success never proves the key does
+ * anything — [verified] is a best-effort read-back check that at least catches the write not
+ * persisting at all (wrong key, read-only key, provider silently rejecting it).
+ */
+data class ApplyOutcome(val verified: Boolean, val actualValue: String? = null)
+
 class SettingsRepository(private val context: Context) {
 
     val allSettings: List<PearitySetting> = SettingCatalogue.all
@@ -60,7 +68,7 @@ class SettingsRepository(private val context: Context) {
 
     // ─── Write ────────────────────────────────────────────────────────────────
 
-    suspend fun applyValue(setting: PearitySetting, value: String, mode: ConnectionMode): Result<Unit> =
+    suspend fun applyValue(setting: PearitySetting, value: String, mode: ConnectionMode): Result<ApplyOutcome> =
         withContext(Dispatchers.IO) {
             // Values are interpolated into shell commands; today every source is a trusted
             // literal, but reject shell metacharacters so a future free-text path can't inject.
@@ -72,7 +80,7 @@ class SettingsRepository(private val context: Context) {
             try {
                 if (setting.requiresShizuku && !hasWriteSecureSettings()) {
                     val cmd = buildShellCommand(setting, value)
-                    runPrivilegedCommand(cmd, mode).map { }
+                    runPrivilegedCommand(cmd, mode).map { verifyWrite(setting, value, mode) }
                 } else if (setting.requiresShizuku) {
                     // WRITE_SECURE_SETTINGS granted (e.g. via adb) — write directly
                     val cr = context.contentResolver
@@ -83,9 +91,9 @@ class SettingsRepository(private val context: Context) {
                         is SettingAccessor.ShellCommand  ->
                             return@withContext runPrivilegedCommand(
                                 buildShellCommand(setting, value), mode
-                            ).map { }
+                            ).map { verifyWrite(setting, value, mode) }
                     }
-                    if (ok) Result.success(Unit)
+                    if (ok) Result.success(verifyWrite(setting, value, mode))
                     else Result.failure(Exception("putString returned false"))
                 } else {
                     // Runtime-grantable WRITE_SETTINGS path
@@ -102,13 +110,25 @@ class SettingsRepository(private val context: Context) {
                             IllegalStateException("Non-system setting requires Shizuku/Root/ADB")
                         )
                     }
-                    if (ok) Result.success(Unit)
+                    if (ok) Result.success(verifyWrite(setting, value, mode))
                     else Result.failure(Exception("putString returned false"))
                 }
             } catch (e: Exception) {
                 Result.failure(e)
             }
         }
+
+    /**
+     * Read the value back after a successful write. ShellCommand accessors are skipped: their
+     * read output is normalised differently from the raw written value (e.g. `wm density` reads
+     * back as "reset" rather than echoing the literal density), which would produce false
+     * mismatches rather than catching real ones.
+     */
+    private suspend fun verifyWrite(setting: PearitySetting, expected: String, mode: ConnectionMode): ApplyOutcome {
+        if (setting.accessor is SettingAccessor.ShellCommand) return ApplyOutcome(verified = true)
+        val actual = readCurrentValue(setting, mode)
+        return ApplyOutcome(verified = actual == expected, actualValue = actual)
+    }
 
     private fun runPrivilegedCommand(command: String, mode: ConnectionMode): Result<String> {
         return when (mode) {

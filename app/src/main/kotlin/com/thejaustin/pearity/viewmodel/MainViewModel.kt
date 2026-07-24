@@ -37,6 +37,9 @@ data class SettingUiState(
     val isApplying: Boolean  = false,
     val error: String?       = null,
     val supported: Boolean   = true,
+
+    /** True if the last apply succeeded but a read-back showed the value didn't actually change. */
+    val unverified: Boolean  = false,
 )
 
 data class MainUiState(
@@ -181,20 +184,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             update(settingId) { it.copy(isApplying = true, error = null) }
             val result = repo.applyValue(entry.setting, value, _ui.value.connectionMode)
-            if (result.isSuccess) {
+            val outcome = result.getOrNull()
+            if (outcome != null) {
                 repo.saveCustomValue(settingId, value)
                 repo.saveSettingState(settingId, SettingState.CUSTOM)
                 update(settingId) {
                     it.copy(
-                        isApplying = false,
-                        state = SettingState.CUSTOM,
-                        currentValue = value,
-                        customValue = value,
+                        isApplying   = false,
+                        state        = SettingState.CUSTOM,
+                        currentValue = outcome.actualValue ?: value,
+                        customValue  = value,
+                        unverified   = !outcome.verified,
                     )
                 }
             } else {
                 update(settingId) {
-                    it.copy(isApplying = false, error = result.exceptionOrNull()?.message)
+                    it.copy(isApplying = false, error = result.exceptionOrNull()?.message, unverified = false)
                 }
             }
         }
@@ -245,14 +250,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val result = repo.applyValue(setting, targetValue, _ui.value.connectionMode)
-        if (result.isSuccess) {
+        val outcome = result.getOrNull()
+        if (outcome != null) {
             repo.saveSettingState(settingId, newState)
             update(settingId) {
-                it.copy(isApplying = false, state = newState, currentValue = targetValue)
+                it.copy(
+                    isApplying   = false,
+                    state        = newState,
+                    currentValue = outcome.actualValue ?: targetValue,
+                    unverified   = !outcome.verified,
+                )
             }
         } else {
             update(settingId) {
-                it.copy(isApplying = false, error = result.exceptionOrNull()?.message)
+                it.copy(isApplying = false, error = result.exceptionOrNull()?.message, unverified = false)
             }
         }
     }

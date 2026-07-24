@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import com.thejaustin.pearity.data.model.KeyConfidence
 import com.thejaustin.pearity.data.model.SettingState
 import com.thejaustin.pearity.viewmodel.SettingUiState
 
@@ -78,6 +79,19 @@ fun SettingCard(
                         )
                     }
                 }
+
+                // Key-confidence badge — this key hasn't been confirmed against real firmware
+                if (state.setting.confidence != KeyConfidence.VERIFIED) {
+                    Spacer(Modifier.width(8.dp))
+                    Badge(containerColor = MaterialTheme.colorScheme.tertiaryContainer) {
+                        Text(
+                            if (state.setting.confidence == KeyConfidence.UNVERIFIED) "Unverified" else "Community",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                }
             }
 
             // ── Value comparison chips ────────────────────────────────────────
@@ -132,12 +146,14 @@ fun SettingCard(
 
             // ── Error / Info message ──────────────────────────────────────────
             AnimatedVisibility(
-                visible = state.error != null || !state.supported,
+                visible = state.error != null || state.unverified || !state.supported,
                 enter   = expandVertically() + fadeIn(),
                 exit    = shrinkVertically() + fadeOut(),
             ) {
                 val message = when {
                     state.error != null -> state.error
+                    state.unverified -> "Write succeeded but the value didn't change on read-back — " +
+                        "this key may not apply on your device."
                     !state.supported -> "This setting requires Root or Shizuku permission to modify."
                     else -> null
                 }
@@ -145,7 +161,11 @@ fun SettingCard(
                     Text(
                         text  = it,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        color = when {
+                            state.error != null -> MaterialTheme.colorScheme.error
+                            state.unverified    -> MaterialTheme.colorScheme.tertiary
+                            else                -> MaterialTheme.colorScheme.primary
+                        },
                     )
                 }
             }
