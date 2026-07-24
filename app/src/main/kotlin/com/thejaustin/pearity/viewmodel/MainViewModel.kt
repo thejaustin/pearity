@@ -11,10 +11,13 @@ import com.thejaustin.pearity.shizuku.ShizukuHelper
 import com.thejaustin.pearity.utils.SmartSwitchApp
 import com.thejaustin.pearity.utils.SmartSwitchDeviceInfo
 import com.thejaustin.pearity.utils.SmartSwitchImporter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // ─── UI models ────────────────────────────────────────────────────────────────
 
@@ -62,44 +65,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _ui = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _ui.asStateFlow()
 
+    /** Source of truth for all settings; settingsByCategory is derived from this. */
     private var _allSettings: List<SettingUiState> = emptyList()
+
+    private var loadJob: Job? = null
 
     init { load() }
 
     // ── Initialise ────────────────────────────────────────────────────────────
 
     private fun load() {
-        viewModelScope.launch {
+        // Cancel any in-flight load so rapid connection-mode switches can't finish
+        // out of order and leave stale reads on screen.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _ui.value = _ui.value.copy(isLoading = true)
             val mode = _ui.value.connectionMode
 
-            // Check Smart Switch backup
-            val backupDir = SmartSwitchImporter.findLatestBackupDir()
-            val apps = backupDir?.let { SmartSwitchImporter.parseIosApps(it) } ?: emptyList()
-            val devInfo = backupDir?.let { SmartSwitchImporter.parseDeviceInfo(it) }
+            val (states, backup) = withContext(Dispatchers.IO) {
+                RootHelper.refreshAvailability()
 
-            val states = repo.allSettings.map { s ->
-                val live   = repo.readCurrentValue(s, mode)
-                // Load persisted custom value; fall back to the live value on first run
-                val custom = repo.loadCustomValue(s.id) ?: live
-                if (custom != null && repo.loadCustomValue(s.id) == null) {
-                    repo.saveCustomValue(s.id, custom)
-                }
-                val state = repo.loadSettingState(s.id)
-                val supported = repo.isSupported(s, mode)
-                SettingUiState(
-                    setting      = s,
-                    currentValue = live,
-                    customValue  = custom,
-                    state        = state,
-                    supported    = supported,
-                )
+                // Check Smart Switch backup (best-effort; needs all-files access to work)
+                val backupDir = SmartSwitchImporter.findLatestBackupDir()
+                val apps = backupDir?.let { SmartSwitchImporter.parseIosApps(it) } ?: emptyList()
+                val devInfo = backupDir?.let { SmartSwitchImporter.parseDeviceInfo(it) }
+
+                val list = repo.allSettings
+                    .sortedBy { it.category.ordinal }
+                    .map { s ->
+                        val live = repo.readCurrentValue(s, mode)
+                        // Load persisted custom value; fall back to the live value on first run
+                        var custom = repo.loadCustomValue(s.id)
+                        if (custom == null && live != null) {
+                            repo.saveCustomValue(s.id, live)
+                            custom = live
+                        }
+                        SettingUiState(
+                            setting      = s,
+                            currentValue = live,
+                            customValue  = custom,
+                            state        = repo.loadSettingState(s.id),
+                            supported    = repo.isSupported(s, mode),
+                        )
+                    }
+                list to Triple(backupDir, apps, devInfo)
             }
 
             _allSettings = states
+            val (backupDir, apps, devInfo) = backup
 
             _ui.value = _ui.value.copy(
-                settingsByCategory = states.groupBy { it.setting.category.displayName },
+                settingsByCategory = grouped(),
                 shizukuAvailable   = ShizukuHelper.isAvailable,
                 shizukuPermission  = ShizukuHelper.hasPermission,
                 rootAvailable      = RootHelper.isAvailable,
@@ -116,129 +132,127 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Search ────────────────────────────────────────────────────────────────
 
     fun onSearchQueryChanged(query: String) {
-        _ui.value = _ui.value.copy(searchQuery = query)
-        applyFilter()
+        _ui.value = _ui.value.copy(searchQuery = query, settingsByCategory = grouped(query))
     }
 
-    private fun applyFilter() {
-        val query = _ui.value.searchQuery.lowercase()
-        
-        val filtered = if (query.isEmpty()) {
+    /** Group the master list into display order, optionally filtered by query. */
+    private fun grouped(query: String = _ui.value.searchQuery): Map<String, List<SettingUiState>> {
+        val q = query.lowercase()
+        val filtered = if (q.isEmpty()) {
             _allSettings
         } else {
-            _allSettings.filter { 
-                it.setting.title.lowercase().contains(query) || 
-                it.setting.subtitle.lowercase().contains(query) ||
-                it.setting.category.displayName.lowercase().contains(query)
+            _allSettings.filter {
+                it.setting.title.lowercase().contains(q) ||
+                it.setting.subtitle.lowercase().contains(q) ||
+                it.setting.category.displayName.lowercase().contains(q)
             }
         }
-
-        _ui.value = _ui.value.copy(
-            settingsByCategory = filtered.groupBy { it.setting.category.displayName }
-        )
+        return filtered.groupBy { it.setting.category.displayName }
     }
 
     // ── Smart Switch Import ──────────────────────────────────────────────────
 
     fun importSmartSwitchData() {
         viewModelScope.launch {
-            val backupDir = _ui.value.smartSwitchBackupDir?.let { java.io.File(it) }
-            val suggestions = SmartSwitchImporter.suggestSettings(
-                _ui.value.smartSwitchApps,
-                _ui.value.smartSwitchDeviceInfo,
-                backupDir
-            )
+            // Snapshot UI state on Main before hopping to IO
+            val ui = _ui.value
+            val backupDir = ui.smartSwitchBackupDir
+                ?.let { java.io.File(it) }
+                ?.takeIf { it.isDirectory }
+            val suggestions = withContext(Dispatchers.IO) {
+                SmartSwitchImporter.suggestSettings(
+                    ui.smartSwitchApps,
+                    ui.smartSwitchDeviceInfo,
+                    backupDir,
+                )
+            }
+            suggestions.forEach { (id, value) -> applySuggestion(id, value) }
+        }
+    }
 
-            suggestions.forEach { (id, value) ->
-                // Automatically apply the iOS state if it matches our suggestion
-                applyState(id, SettingState.IOS)
+    /**
+     * Apply a suggested value. If it matches the catalogue's iOS default the card
+     * lands on the iOS state; otherwise the value becomes the CUSTOM baseline.
+     */
+    private suspend fun applySuggestion(settingId: String, value: String) {
+        val entry = findEntry(settingId) ?: return
+        if (value == entry.setting.iosDefaultValue) {
+            applyStateInternal(settingId, SettingState.IOS)
+        } else {
+            update(settingId) { it.copy(isApplying = true, error = null) }
+            val result = repo.applyValue(entry.setting, value, _ui.value.connectionMode)
+            if (result.isSuccess) {
+                repo.saveCustomValue(settingId, value)
+                repo.saveSettingState(settingId, SettingState.CUSTOM)
+                update(settingId) {
+                    it.copy(
+                        isApplying = false,
+                        state = SettingState.CUSTOM,
+                        currentValue = value,
+                        customValue = value,
+                    )
+                }
+            } else {
+                update(settingId) {
+                    it.copy(isApplying = false, error = result.exceptionOrNull()?.message)
+                }
             }
         }
     }
 
     /**
-     * Import Smart Switch data from a user-selected URI (document tree).
+     * Import Smart Switch data from a user-selected document tree.
      */
-    fun importSmartSwitchFromUri(uri: android.net.Uri, context: android.content.Context) {
+    fun importSmartSwitchFromUri(uri: android.net.Uri) {
         viewModelScope.launch {
-            try {
-                // Convert URI to path and scan for Smart Switch backup
-                val path = uri.path ?: return@launch
-                // Try to find the actual backup folder from the selected tree
-                val backupDir = java.io.File(path)
-                
-                // Check if this looks like a Smart Switch backup
-                val smartSwitchDir = if (backupDir.name == "SmartSwitch") backupDir else java.io.File(backupDir, "SmartSwitch")
-                val iosAppsFile = java.io.File(smartSwitchDir, "iosApps.json")
-                val devInfoFile = java.io.File(smartSwitchDir, "devInfo.json")
-                
-                if (!iosAppsFile.exists() && !devInfoFile.exists()) {
-                    // Try parent directory
-                    val parentDir = backupDir.parentFile
-                    if (parentDir != null) {
-                        val altSmartSwitch = java.io.File(parentDir, "SmartSwitch")
-                        if (java.io.File(altSmartSwitch, "iosApps.json").exists() || 
-                            java.io.File(altSmartSwitch, "devInfo.json").exists()) {
-                            // Found it
-                            val apps = SmartSwitchImporter.parseIosApps(altSmartSwitch)
-                            val devInfo = SmartSwitchImporter.parseDeviceInfo(altSmartSwitch)
-                            _ui.value = _ui.value.copy(
-                                smartSwitchBackupFound = true,
-                                smartSwitchBackupDir = altSmartSwitch.absolutePath,
-                                smartSwitchApps = apps,
-                                smartSwitchDeviceInfo = devInfo,
-                            )
-                            importSmartSwitchData()
-                            return@launch
-                        }
-                    }
-                    return@launch // Not a valid backup
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    SmartSwitchImporter.parseFromTree(getApplication(), uri)
+                } catch (e: Exception) {
+                    null
                 }
-                
-                val apps = SmartSwitchImporter.parseIosApps(smartSwitchDir)
-                val devInfo = SmartSwitchImporter.parseDeviceInfo(smartSwitchDir)
-                
-                _ui.value = _ui.value.copy(
-                    smartSwitchBackupFound = true,
-                    smartSwitchBackupDir = smartSwitchDir.absolutePath,
-                    smartSwitchApps = apps,
-                    smartSwitchDeviceInfo = devInfo,
-                )
-                
-                // Auto-import after successful selection
-                importSmartSwitchData()
-            } catch (e: Exception) {
-                // Handle error silently - UI will show no backup found
-            }
+            } ?: return@launch // Not a valid backup
+
+            _ui.value = _ui.value.copy(
+                smartSwitchBackupFound = true,
+                smartSwitchBackupDir = result.displayPath,
+                smartSwitchApps = result.apps,
+                smartSwitchDeviceInfo = result.deviceInfo,
+            )
+
+            // Auto-import after successful selection
+            importSmartSwitchData()
         }
     }
 
     // ── Apply a state change ──────────────────────────────────────────────────
 
     fun applyState(settingId: String, newState: SettingState) {
-        viewModelScope.launch {
-            val entry   = findEntry(settingId) ?: return@launch
-            val setting = entry.setting
+        viewModelScope.launch { applyStateInternal(settingId, newState) }
+    }
 
-            // Optimistically mark as applying
-            update(settingId) { it.copy(isApplying = true, error = null) }
+    private suspend fun applyStateInternal(settingId: String, newState: SettingState) {
+        val entry   = findEntry(settingId) ?: return
+        val setting = entry.setting
 
-            val targetValue = when (newState) {
-                SettingState.ANDROID_DEFAULT -> setting.androidDefaultValue
-                SettingState.CUSTOM          -> entry.customValue ?: setting.androidDefaultValue
-                SettingState.IOS             -> setting.iosDefaultValue
+        // Optimistically mark as applying
+        update(settingId) { it.copy(isApplying = true, error = null) }
+
+        val targetValue = when (newState) {
+            SettingState.ANDROID_DEFAULT -> setting.androidDefaultValue
+            SettingState.CUSTOM          -> entry.customValue ?: setting.androidDefaultValue
+            SettingState.IOS             -> setting.iosDefaultValue
+        }
+
+        val result = repo.applyValue(setting, targetValue, _ui.value.connectionMode)
+        if (result.isSuccess) {
+            repo.saveSettingState(settingId, newState)
+            update(settingId) {
+                it.copy(isApplying = false, state = newState, currentValue = targetValue)
             }
-
-            val result = repo.applyValue(setting, targetValue, _ui.value.connectionMode)
-            if (result.isSuccess) {
-                repo.saveSettingState(settingId, newState)
-                update(settingId) {
-                    it.copy(isApplying = false, state = newState, currentValue = targetValue)
-                }
-            } else {
-                update(settingId) {
-                    it.copy(isApplying = false, error = result.exceptionOrNull()?.message)
-                }
+        } else {
+            update(settingId) {
+                it.copy(isApplying = false, error = result.exceptionOrNull()?.message)
             }
         }
     }
@@ -256,12 +270,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── Shizuku ───────────────────────────────────────────────────────────────
 
     fun refreshShizuku() {
-        _ui.value = _ui.value.copy(
-            shizukuAvailable  = ShizukuHelper.isAvailable,
-            shizukuPermission = ShizukuHelper.hasPermission,
-            rootAvailable     = RootHelper.isAvailable,
-            writeSettingsGranted = android.provider.Settings.System.canWrite(getApplication()),
-        )
+        viewModelScope.launch {
+            val rootAvailable = withContext(Dispatchers.IO) { RootHelper.refreshAvailability() }
+            val mode = _ui.value.connectionMode
+            _allSettings = _allSettings.map {
+                it.copy(supported = repo.isSupported(it.setting, mode))
+            }
+            _ui.value = _ui.value.copy(
+                shizukuAvailable  = ShizukuHelper.isAvailable,
+                shizukuPermission = ShizukuHelper.hasPermission,
+                rootAvailable     = rootAvailable,
+                writeSettingsGranted = android.provider.Settings.System.canWrite(getApplication()),
+                settingsByCategory = grouped(),
+            )
+        }
     }
 
     fun requestShizukuPermission() {
@@ -281,18 +303,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun allEntries() =
-        _ui.value.settingsByCategory.values.flatten()
-
     private fun findEntry(id: String) =
-        allEntries().find { it.setting.id == id }
+        _allSettings.find { it.setting.id == id }
 
     private fun update(id: String, transform: (SettingUiState) -> SettingUiState) {
-        _ui.value = _ui.value.copy(
-            settingsByCategory = _ui.value.settingsByCategory.mapValues { (_, list) ->
-                list.map { if (it.setting.id == id) transform(it) else it }
-            },
-        )
+        _allSettings = _allSettings.map { if (it.setting.id == id) transform(it) else it }
+        _ui.value = _ui.value.copy(settingsByCategory = grouped())
     }
 
     companion object {

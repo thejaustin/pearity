@@ -1,11 +1,12 @@
 package com.thejaustin.pearity.utils
 
+import android.content.Context
+import android.net.Uri
 import android.os.Environment
-import com.thejaustin.pearity.shizuku.ShizukuHelper
+import android.provider.DocumentsContract
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.security.MessageDigest
 
 @Serializable
 data class SmartSwitchApp(
@@ -23,6 +24,12 @@ data class SmartSwitchDeviceInfo(
 object SmartSwitchImporter {
 
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** Cap for backup-file reads: real iosApps/devInfo JSONs are a few KB; anything huge is not ours. */
+    private const val MAX_FILE_BYTES = 1_000_000L
+
+    private fun File.readTextCapped(): String? =
+        if (length() in 1..MAX_FILE_BYTES) readText() else null
 
     private val BACKUP_PATHS = listOf(
         "/sdcard/Samsung/SmartSwitch/backup",
@@ -72,7 +79,7 @@ object SmartSwitchImporter {
         if (!appsFile.exists()) return emptyList()
 
         return try {
-            val content = appsFile.readText()
+            val content = appsFile.readTextCapped() ?: return emptyList()
             json.decodeFromString<List<SmartSwitchApp>>(content)
         } catch (e: Exception) {
             emptyList()
@@ -87,12 +94,111 @@ object SmartSwitchImporter {
         if (!devInfoFile.exists()) return null
 
         return try {
-            val content = devInfoFile.readText()
+            val content = devInfoFile.readTextCapped() ?: return null
             json.decodeFromString<SmartSwitchDeviceInfo>(content)
         } catch (e: Exception) {
             null
         }
     }
+
+    // ─── SAF (document tree) import ──────────────────────────────────────────
+
+    data class TreeImportResult(
+        val apps: List<SmartSwitchApp>,
+        val deviceInfo: SmartSwitchDeviceInfo?,
+        val displayPath: String,
+    )
+
+    /**
+     * Parse a Smart Switch backup from a user-selected document tree.
+     * Accepts either the backup folder itself or a parent containing a
+     * "SmartSwitch" subfolder. Returns null if neither JSON file is found.
+     */
+    fun parseFromTree(context: Context, treeUri: Uri): TreeImportResult? {
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val files = findBackupJsonFiles(context, treeUri, rootId, depth = 0) ?: return null
+        val (appsJson, devInfoJson) = files
+
+        val apps = appsJson?.let {
+            try { json.decodeFromString<List<SmartSwitchApp>>(it) } catch (e: Exception) { emptyList() }
+        } ?: emptyList()
+        val devInfo = devInfoJson?.let {
+            try { json.decodeFromString<SmartSwitchDeviceInfo>(it) } catch (e: Exception) { null }
+        }
+
+        if (apps.isEmpty() && devInfo == null) return null
+        return TreeImportResult(apps, devInfo, treeUri.lastPathSegment ?: treeUri.toString())
+    }
+
+    /** Returns (iosApps.json content, devInfo.json content) or null if not found. */
+    private fun findBackupJsonFiles(
+        context: Context,
+        treeUri: Uri,
+        parentDocId: String,
+        depth: Int,
+    ): Pair<String?, String?>? {
+        if (depth > 2) return null
+
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+        var appsContent: String? = null
+        var devInfoContent: String? = null
+        val subDirs = mutableListOf<String>()
+
+        try {
+            context.contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                ),
+                null, null, null,
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val docId = cursor.getString(0)
+                    val name = cursor.getString(1)
+                    val mime = cursor.getString(2)
+                    when {
+                        name == "iosApps.json" -> appsContent = readDocument(context, treeUri, docId)
+                        name == "devInfo.json" -> devInfoContent = readDocument(context, treeUri, docId)
+                        mime == DocumentsContract.Document.MIME_TYPE_DIR &&
+                            name.equals("SmartSwitch", ignoreCase = true) -> subDirs.add(docId)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            return null
+        }
+
+        if (appsContent != null || devInfoContent != null) {
+            return appsContent to devInfoContent
+        }
+        for (dirId in subDirs) {
+            findBackupJsonFiles(context, treeUri, dirId, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    private fun readDocument(context: Context, treeUri: Uri, docId: String): String? =
+        try {
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            context.contentResolver.openInputStream(docUri)?.use { stream ->
+                // Bounded read (InputStream.readNBytes needs API 33; minSdk is 31):
+                // a user-picked tree could contain arbitrarily large files
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(8192)
+                var overflow = false
+                while (true) {
+                    val n = stream.read(buf)
+                    if (n == -1) break
+                    if (out.size() + n > MAX_FILE_BYTES) { overflow = true; break }
+                    out.write(buf, 0, n)
+                }
+                if (overflow) null else out.toByteArray().decodeToString()
+            }
+        } catch (e: Exception) {
+            null
+        }
 
     /**
      * Deep scan for iOS system settings by locating Manifest.db and
@@ -100,27 +206,8 @@ object SmartSwitchImporter {
      */
     fun deepScanAccessibility(backupDir: File): Map<String, String> {
         val results = mutableMapOf<String, String>()
-        
-        // 1. Check for 'JobItems.json' which often logs what settings were successfully migrated
-        val jobFile = File(backupDir, "SmartSwitch/JobItems.json")
-        if (jobFile.exists()) {
-            val content = jobFile.readText()
-            if (content.contains("\"Setting\"")) {
-                // Settings were transferred
-            }
-        }
 
-        // 2. Look for the converted settings staged in the temporary directory
-        // Smart Switch often generates a 'setting_restore.json' or similar.
-        val restoreFile = File(backupDir, "SmartSwitch/setting_restore.json")
-        if (restoreFile.exists()) {
-            val content = restoreFile.readText()
-            if (content.contains("fontSize")) {
-                // Extract font size mapping
-            }
-        }
-
-        // 3. Heuristic: Scan for common iOS SHA1 file names directly in the backup
+        // Heuristic: Scan for common iOS SHA1 file names directly in the backup
         // Accessibility Plist Hash: SHA1("HomeDomain-Library/Preferences/com.apple.Accessibility.plist")
         val accessibilityHash = "8f5c35b88135f29f0326442c554a938c5586616a" // Known actual hash in some iOS versions
         val accessibilityHashFallback = "c351e3034ca117560d7c5731c2a8d6841dc8e034"
@@ -178,7 +265,7 @@ object SmartSwitchImporter {
         val file = File(backupDir, "$prefix/$hash")
         if (file.exists()) {
             try {
-                action(file.readText())
+                file.readTextCapped()?.let(action)
             } catch (e: Exception) {
                 // Ignore parsing errors
             }
@@ -194,7 +281,12 @@ object SmartSwitchImporter {
 
         // 1. Refresh Rate (ProMotion)
         devInfo?.model?.let { model ->
-            val spec = MODEL_SPECS[model] ?: if (model.contains("Pro")) DisplaySpec(120.0, 10.0, true) else null
+            // ProMotion only exists on iPhone 13 Pro and later — iPhone 11/12 Pro are 60Hz,
+            // so the "Pro" fallback must check the generation number too.
+            val generation = Regex("iPhone (\\d+)").find(model)?.groupValues?.get(1)?.toIntOrNull()
+            val fallback = if (model.contains("Pro") && generation != null && generation >= 13)
+                DisplaySpec(120.0, 10.0, true) else null
+            val spec = MODEL_SPECS[model] ?: fallback
             if (spec != null) {
                 suggestions["peak_refresh_rate"] = spec.peakHz.toString()
                 suggestions["min_refresh_rate"] = spec.minHz.toString()
@@ -229,10 +321,5 @@ object SmartSwitchImporter {
         suggestions["screen_off_timeout"] = "30000"
 
         return suggestions
-    }
-
-    private fun sha1(input: String): String {
-        val md = MessageDigest.getInstance("SHA-1")
-        return md.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 }

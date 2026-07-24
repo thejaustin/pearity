@@ -7,31 +7,42 @@ import java.io.DataOutputStream
  */
 object RootHelper {
 
-    /** True if 'su' is available in the PATH */
+    // Probing for su spawns a process, so cache the answer; refreshAvailability()
+    // re-probes when the user taps Refresh or changes connection mode.
+    @Volatile
+    private var cachedAvailable: Boolean? = null
+
+    /** True if 'su' is available in the PATH (cached after first probe) */
     val isAvailable: Boolean
-        get() = try {
-            val process = Runtime.getRuntime().exec("which su")
+        get() = cachedAvailable ?: refreshAvailability()
+
+    /** Re-probe for su. Blocking — call from Dispatchers.IO. */
+    fun refreshAvailability(): Boolean {
+        val result = try {
+            val process = Runtime.getRuntime().exec(arrayOf("which", "su"))
             process.waitFor() == 0
         } catch (_: Exception) {
             false
         }
+        cachedAvailable = result
+        return result
+    }
 
     /**
-     * Execute [command] as root.
+     * Execute [command] as root. Blocking — call from Dispatchers.IO.
      */
     fun runCommand(command: String): Result<String> {
+        var process: Process? = null
         return try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            
-            os.writeBytes("$command\n")
-            os.writeBytes("exit\n")
-            os.flush()
-            
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exit = process.waitFor()
-            
+            process = Runtime.getRuntime().exec("su")
+            DataOutputStream(process.outputStream).use { os ->
+                os.writeBytes("$command\n")
+                os.writeBytes("exit\n")
+                os.flush()
+            }
+
+            val (stdout, stderr, exit) = process.collectOutput()
+
             if (exit != 0 && stderr.isNotBlank())
                 Result.failure(Exception("Root exit $exit: $stderr"))
             else
@@ -39,7 +50,7 @@ object RootHelper {
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
-            // Cleanup process if needed
+            process?.destroy()
         }
     }
 }

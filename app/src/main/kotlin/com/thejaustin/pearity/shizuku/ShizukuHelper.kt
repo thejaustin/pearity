@@ -1,6 +1,5 @@
 package com.thejaustin.pearity.shizuku
 
-import android.content.Intent
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
 import java.io.File
@@ -32,41 +31,55 @@ object ShizukuHelper {
         } catch (_: Exception) { /* ignore */ }
     }
 
-    /**
-     * Execute [command] via the rish shell, which routes through the Shizuku daemon.
-     * rish is Shizuku's own privileged shell binary — using it avoids the private
-     * Shizuku.newProcess() API while still running with elevated permissions.
-     */
+    /** Run [command] as the Shizuku identity (shell uid). Blocking — call from Dispatchers.IO. */
     fun runCommand(command: String): Result<String> {
         if (!isAvailable)   return Result.failure(Exception("Shizuku is not running"))
         if (!hasPermission) return Result.failure(Exception("Shizuku permission not granted"))
-        val result = runViaRish(command)
-        
-        // Split-brain prevention for Samsung devices
-        if (result.isSuccess && command.contains("settings put")) {
-            syncSamsungState()
+        var process: Process? = null
+        return try {
+            process = newProcess(arrayOf("sh", "-c", command))
+            process.outputStream.close() // the command takes no stdin; don't leave the child waiting
+            val (stdout, stderr, exit) = process.collectOutput()
+            if (exit == 0)
+                Result.success(stdout.trim())
+            else
+                Result.failure(Exception("shizuku($exit): ${stderr.ifBlank { stdout }.trim()}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        } finally {
+            process?.destroy()
         }
-        
-        return result
     }
 
-    /** Fallback: run via rish without checking Shizuku permission state first */
+    // Shizuku.newProcess is private API but the de-facto stable way to spawn a remote
+    // shell; proguard-rules.pro keeps all of rikka.shizuku so reflection survives R8.
+    private fun newProcess(cmd: Array<String>): Process {
+        val method = Shizuku::class.java.getDeclaredMethod(
+            "newProcess",
+            Array<String>::class.java,
+            Array<String>::class.java,
+            String::class.java,
+        )
+        method.isAccessible = true
+        return method.invoke(null, cmd, null, null) as Process
+    }
+
+    /** Fallback: run via a rish binary if one is accessible. Blocking — call from Dispatchers.IO. */
     fun runCommandViaRish(command: String): Result<String> = runViaRish(command)
 
     private fun runViaRish(command: String): Result<String> {
         val rishPaths = listOf(
-            "/data/data/com.termux/files/home/rish",
             "/data/local/tmp/rish",
         )
 
         for (rishPath in rishPaths) {
-            if (!File(rishPath).exists()) continue
+            if (!File(rishPath).canExecute()) continue
+            var process: Process? = null
             return try {
-                val process = Runtime.getRuntime()
+                process = Runtime.getRuntime()
                     .exec(arrayOf(rishPath, "-c", command))
-                val stdout = process.inputStream.bufferedReader().readText()
-                val stderr = process.errorStream.bufferedReader().readText()
-                val exit   = process.waitFor()
+                process.outputStream.close()
+                val (stdout, stderr, exit) = process.collectOutput()
 
                 if (exit != 0 && stderr.isNotBlank())
                     Result.failure(Exception("rish exit $exit: $stderr"))
@@ -74,22 +87,11 @@ object ShizukuHelper {
                     Result.success(stdout.trim())
             } catch (e: Exception) {
                 Result.failure(e)
+            } finally {
+                process?.destroy()
             }
         }
 
-        return Result.failure(Exception("rish not found — is Shizuku running?"))
-    }
-
-    /**
-     * Prevents "Split-Brain" on Samsung devices by forcing One UI to reconcile
-     * its proprietary database with the standard Android settings provider.
-     */
-    private fun syncSamsungState() {
-        try {
-            // Using rish to broadcast configuration change which triggers Samsung observers
-            runViaRish("am broadcast -a android.intent.action.CONFIGURATION_CHANGED")
-        } catch (e: Exception) {
-            // ignore
-        }
+        return Result.failure(Exception("rish not accessible — use Shizuku or Root mode instead"))
     }
 }
