@@ -27,6 +27,23 @@ enum class SettingState {
     IOS,
 }
 
+// ─── Confidence in the accessor key ───────────────────────────────────────────
+
+/**
+ * How sure we are that toggling [PearitySetting.accessor] actually produces the described
+ * effect. Android's Settings provider accepts writes to *any* key with no schema validation,
+ * so a write "succeeding" never proves the key does anything — this is set by hand from
+ * source/doc review, not derived from anything at runtime.
+ */
+enum class KeyConfidence {
+    /** Confirmed against AOSP source, official docs, or an equivalent primary source. */
+    VERIFIED,
+    /** Real, documented key, but with a known caveat (per-app override, deprecated). */
+    COMMUNITY,
+    /** Best-effort guess; unconfirmed the key exists or does anything at all. */
+    UNVERIFIED,
+}
+
 // ─── How the setting is accessed / written ────────────────────────────────────
 
 sealed class SettingAccessor {
@@ -78,4 +95,7 @@ data class PearitySetting(
 
     /** Display unit appended to values in the value chips (e.g. "×", "sp", "dp") */
     val unit: String = "",
+
+    /** How sure we are [accessor] names a real key — see [KeyConfidence]. */
+    val confidence: KeyConfidence = KeyConfidence.VERIFIED,
 )

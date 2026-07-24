@@ -96,6 +96,7 @@ object SettingCatalogue {
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
             requiresShizuku     = false,
+            confidence          = KeyConfidence.COMMUNITY,
         ),
         PearitySetting(
             id                  = "charging_sound",
@@ -127,6 +128,7 @@ object SettingCatalogue {
             androidDefaultValue = "1",
             iosDefaultValue = "0",
             requiresShizuku = false,
+            confidence = KeyConfidence.COMMUNITY,
         ),
 
         // ── Display ───────────────────────────────────────────────────────────
@@ -181,6 +183,7 @@ object SettingCatalogue {
             androidDefaultValue = "0",
             iosDefaultValue     = "1",
             requiresShizuku     = false,
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
         PearitySetting(
             id                  = "vibrate_on_clear_notifications",
@@ -371,6 +374,7 @@ object SettingCatalogue {
             accessor            = SettingAccessor.SecureSetting("input_method_auto_fill"),
             androidDefaultValue = "1",
             iosDefaultValue     = "1",
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
 
         // ── Navigation ────────────────────────────────────────────────────────
@@ -421,6 +425,7 @@ object SettingCatalogue {
             accessor            = SettingAccessor.SecureSetting("location_mode"),
             androidDefaultValue = "3",
             iosDefaultValue     = "3",
+            confidence          = KeyConfidence.COMMUNITY,
         ),
         PearitySetting(
             id                  = "doze_always_on",
@@ -468,18 +473,26 @@ object SettingCatalogue {
             title               = "Clock Position",
             subtitle            = "Status bar clock side. iOS: left (0). Samsung default: right (1).",
             category            = SettingCategory.SAMSUNG,
+            // No corroboration found. AOSP Pie's icon_blacklist mechanism used tokens like
+            // "right_clock_position" appended to a Secure key, but that's a different key
+            // shape than a plain on/off value — not confirmed against One UI 6/7 SystemUI.
             accessor            = SettingAccessor.SecureSetting("status_bar_clock"),
             androidDefaultValue = "1",
             iosDefaultValue     = "0",
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
         PearitySetting(
             id                  = "edge_panels",
             title               = "Edge Panels",
             subtitle            = "Slide-out panels from screen edge. No iOS equivalent → off for iOS parity.",
             category            = SettingCategory.SAMSUNG,
+            // No corroboration found. The feature is backed by the standalone
+            // com.samsung.android.app.cocktailbarservice package; disabling that package may be
+            // the only reliable control, not a Settings.Secure key.
             accessor            = SettingAccessor.SecureSetting("edge_panel_enabled"),
             androidDefaultValue = "1",
             iosDefaultValue     = "0",
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
         PearitySetting(
             id                  = "edge_lighting",
@@ -489,15 +502,18 @@ object SettingCatalogue {
             accessor            = SettingAccessor.SecureSetting("edge_lighting_enabled"),
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
         PearitySetting(
             id                  = "smart_stay",
             title               = "Smart Stay",
-            subtitle            = "Screen stays on while you look at it. iOS has no equivalent → off.",
+            subtitle            = "Screen stays on while you look at it. iOS has no equivalent → off. " +
+                                   "Legacy Galaxy S3/S4-era feature — may not exist on this model.",
             category            = SettingCategory.SAMSUNG,
             accessor            = SettingAccessor.SecureSetting("smart_stay_enabled"),
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
         PearitySetting(
             id                  = "raise_to_wake",
@@ -524,18 +540,26 @@ object SettingCatalogue {
             title               = "Always-On Display (One UI)",
             subtitle            = "Samsung AOD setting. iOS Pro default: on. Samsung default: off.",
             category            = SettingCategory.SAMSUNG,
-            accessor            = SettingAccessor.SecureSetting("always_on_display_enabled"),
+            // "always_on_display_enabled" (Secure) had no corroboration. Three independent
+            // Tasker/XDA threads instead point to "aod_mode" on the *System* table — but that
+            // evidence is from Galaxy S8/S9/S10-era One UI, and one thread reports it doesn't
+            // work on every model. Best lead available without a device to confirm on.
+            accessor            = SettingAccessor.SystemSetting("aod_mode"),
             androidDefaultValue = "0",
             iosDefaultValue     = "1",
+            requiresShizuku     = false,
+            confidence          = KeyConfidence.COMMUNITY,
         ),
         PearitySetting(
             id                  = "samsung_reduce_animations",
             title               = "Reduce Animations (One UI)",
-            subtitle            = "Samsung-specific motion reduction. iOS Reduce Motion default: off",
+            subtitle            = "Samsung-specific motion reduction. iOS Reduce Motion default: off. " +
+                                   "Removed in One UI 3, replaced by Accessibility → Remove animations — may not exist here.",
             category            = SettingCategory.SAMSUNG,
             accessor            = SettingAccessor.SecureSetting("reduce_animations"),
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
         PearitySetting(
             id                  = "touch_sensitivity",
@@ -545,6 +569,7 @@ object SettingCatalogue {
             accessor            = SettingAccessor.SecureSetting("touch_sensitivity_mode"),
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
+            confidence          = KeyConfidence.UNVERIFIED,
         ),
         PearitySetting(
             id                  = "notification_vibration_intensity",
