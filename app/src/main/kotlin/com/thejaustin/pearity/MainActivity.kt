@@ -3,11 +3,13 @@ package com.thejaustin.pearity
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -51,7 +53,11 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
 @Composable
 private fun PearityApp() {
     val vm: MainViewModel = viewModel()
-    var showSettings by remember { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+
+    // With enableOnBackInvokedCallback + manual (non-NavController) navigation, system back
+    // would otherwise fall through to the default handler and finish the Activity from Settings.
+    BackHandler(enabled = showSettings) { showSettings = false }
 
     if (showSettings) {
         SettingsScreen(

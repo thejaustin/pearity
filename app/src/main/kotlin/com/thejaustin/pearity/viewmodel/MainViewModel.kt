@@ -12,6 +12,7 @@ import com.thejaustin.pearity.utils.SmartSwitchApp
 import com.thejaustin.pearity.utils.SmartSwitchDeviceInfo
 import com.thejaustin.pearity.utils.SmartSwitchImporter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,12 +68,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Source of truth for all settings; settingsByCategory is derived from this. */
     private var _allSettings: List<SettingUiState> = emptyList()
 
+    private var loadJob: Job? = null
+
     init { load() }
 
     // ── Initialise ────────────────────────────────────────────────────────────
 
     private fun load() {
-        viewModelScope.launch {
+        // Cancel any in-flight load so rapid connection-mode switches can't finish
+        // out of order and leave stale reads on screen.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _ui.value = _ui.value.copy(isLoading = true)
             val mode = _ui.value.connectionMode
 
@@ -148,13 +154,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun importSmartSwitchData() {
         viewModelScope.launch {
-            val backupDir = _ui.value.smartSwitchBackupDir
+            // Snapshot UI state on Main before hopping to IO
+            val ui = _ui.value
+            val backupDir = ui.smartSwitchBackupDir
                 ?.let { java.io.File(it) }
                 ?.takeIf { it.isDirectory }
             val suggestions = withContext(Dispatchers.IO) {
                 SmartSwitchImporter.suggestSettings(
-                    _ui.value.smartSwitchApps,
-                    _ui.value.smartSwitchDeviceInfo,
+                    ui.smartSwitchApps,
+                    ui.smartSwitchDeviceInfo,
                     backupDir,
                 )
             }

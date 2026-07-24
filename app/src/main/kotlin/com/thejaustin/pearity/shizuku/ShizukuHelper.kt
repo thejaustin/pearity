@@ -35,17 +35,19 @@ object ShizukuHelper {
     fun runCommand(command: String): Result<String> {
         if (!isAvailable)   return Result.failure(Exception("Shizuku is not running"))
         if (!hasPermission) return Result.failure(Exception("Shizuku permission not granted"))
+        var process: Process? = null
         return try {
-            val process = newProcess(arrayOf("sh", "-c", command))
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exit   = process.waitFor()
+            process = newProcess(arrayOf("sh", "-c", command))
+            process.outputStream.close() // the command takes no stdin; don't leave the child waiting
+            val (stdout, stderr, exit) = process.collectOutput()
             if (exit == 0)
                 Result.success(stdout.trim())
             else
                 Result.failure(Exception("shizuku($exit): ${stderr.ifBlank { stdout }.trim()}"))
         } catch (e: Exception) {
             Result.failure(e)
+        } finally {
+            process?.destroy()
         }
     }
 
@@ -72,12 +74,12 @@ object ShizukuHelper {
 
         for (rishPath in rishPaths) {
             if (!File(rishPath).canExecute()) continue
+            var process: Process? = null
             return try {
-                val process = Runtime.getRuntime()
+                process = Runtime.getRuntime()
                     .exec(arrayOf(rishPath, "-c", command))
-                val stdout = process.inputStream.bufferedReader().readText()
-                val stderr = process.errorStream.bufferedReader().readText()
-                val exit   = process.waitFor()
+                process.outputStream.close()
+                val (stdout, stderr, exit) = process.collectOutput()
 
                 if (exit != 0 && stderr.isNotBlank())
                     Result.failure(Exception("rish exit $exit: $stderr"))
@@ -85,6 +87,8 @@ object ShizukuHelper {
                     Result.success(stdout.trim())
             } catch (e: Exception) {
                 Result.failure(e)
+            } finally {
+                process?.destroy()
             }
         }
 

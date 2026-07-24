@@ -35,15 +35,13 @@ object RootHelper {
         var process: Process? = null
         return try {
             process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
+            DataOutputStream(process.outputStream).use { os ->
+                os.writeBytes("$command\n")
+                os.writeBytes("exit\n")
+                os.flush()
+            }
 
-            os.writeBytes("$command\n")
-            os.writeBytes("exit\n")
-            os.flush()
-
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exit = process.waitFor()
+            val (stdout, stderr, exit) = process.collectOutput()
 
             if (exit != 0 && stderr.isNotBlank())
                 Result.failure(Exception("Root exit $exit: $stderr"))

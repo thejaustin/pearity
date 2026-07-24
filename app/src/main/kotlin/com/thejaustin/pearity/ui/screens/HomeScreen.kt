@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -29,7 +30,7 @@ fun HomeScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    var navRailVisible by remember { mutableStateOf(true) }
+    var navRailVisible by rememberSaveable { mutableStateOf(true) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -210,9 +211,10 @@ fun HomeScreen(
                 ui.settingsByCategory.forEach { (categoryName, settings) ->
 
                     item(key = "header_$categoryName") {
-                        // Auto-expand while a search is active so matches are visible
+                        // Auto-expand while a search is active so matches are visible;
+                        // saveable so expansion survives rotation.
                         val searching = ui.searchQuery.isNotEmpty()
-                        var expanded by remember(searching) { mutableStateOf(searching) }
+                        var expanded by rememberSaveable(searching) { mutableStateOf(searching) }
 
                         Surface(
                             onClick = { expanded = !expanded },

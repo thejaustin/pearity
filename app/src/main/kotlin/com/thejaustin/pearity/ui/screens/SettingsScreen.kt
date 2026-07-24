@@ -22,6 +22,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thejaustin.pearity.viewmodel.ConnectionMode
 import com.thejaustin.pearity.viewmodel.MainViewModel
 import com.thejaustin.pearity.utils.CrashHandler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +47,7 @@ fun SettingsScreen(
     }
 
     LaunchedEffect(Unit) {
-        crashLog = CrashHandler.getCrashLog(context)
+        crashLog = withContext(Dispatchers.IO) { CrashHandler.getCrashLog(context) }
     }
 
     if (showCrashDialog && crashLog != null) {
@@ -427,7 +429,9 @@ private fun SmartSwitchImportCard(
             }
             if (backupPath != null) {
                 Text(
-                    "Path: $backupPath",
+                    // SAF imports store a document-tree ID here (e.g. "primary:SmartSwitch"),
+                    // not a filesystem path, so label it neutrally
+                    "Source: $backupPath",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1

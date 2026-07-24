@@ -59,6 +59,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Without this, AGP mints a fresh random debug keystore on every ephemeral
+      # runner, so consecutive releases carry different signatures and users hit
+      # "signature mismatch" on every update, forcing uninstall + data loss.
+      - name: Restore persistent debug keystore
+        if: ${{ secrets.PEARITY_DEBUG_KEYSTORE_B64 != '' }}
+        env:
+          KEYSTORE_B64: ${{ secrets.PEARITY_DEBUG_KEYSTORE_B64 }}
+        run: |
+          mkdir -p "$HOME/.android"
+          echo "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          echo "Persistent debug keystore installed"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         continue-on-error: true  # Ignore cache service failures

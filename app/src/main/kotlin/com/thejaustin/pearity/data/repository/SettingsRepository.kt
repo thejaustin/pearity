@@ -62,6 +62,13 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun applyValue(setting: PearitySetting, value: String, mode: ConnectionMode): Result<Unit> =
         withContext(Dispatchers.IO) {
+            // Values are interpolated into shell commands; today every source is a trusted
+            // literal, but reject shell metacharacters so a future free-text path can't inject.
+            if (!SAFE_SHELL_VALUE.matches(value)) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("Unsafe characters in value: $value")
+                )
+            }
             try {
                 if (setting.requiresShizuku && !hasWriteSecureSettings()) {
                     val cmd = buildShellCommand(setting, value)
@@ -136,6 +143,12 @@ class SettingsRepository(private val context: Context) {
     private fun hasWriteSecureSettings(): Boolean =
         context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private companion object {
+        // Letters, digits, and separators that appear in real settings values
+        // (floats, package/component names) — no whitespace, quotes, or shell metachars.
+        val SAFE_SHELL_VALUE = Regex("^[A-Za-z0-9._:,/@+-]+$")
+    }
 
     private fun buildShellCommand(setting: PearitySetting, value: String): String =
         when (val acc = setting.accessor) {

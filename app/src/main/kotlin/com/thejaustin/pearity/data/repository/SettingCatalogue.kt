@@ -90,7 +90,7 @@ object SettingCatalogue {
         PearitySetting(
             id                  = "keyboard_sound",
             title               = "Keyboard Click Sound",
-            subtitle            = "Audio on key presses. iOS default: off",
+            subtitle            = "Audio on key presses. Controlled per-keyboard-app on most devices — may not change every keyboard.",
             category            = SettingCategory.SOUND,
             accessor            = SettingAccessor.SystemSetting("sound_on_keypress"),
             androidDefaultValue = "0",
@@ -121,7 +121,7 @@ object SettingCatalogue {
         PearitySetting(
             id                  = "keyboard_haptics",
             title               = "Keyboard Haptics",
-            subtitle = "Vibration on key presses. iOS 16+ default: off",
+            subtitle = "Vibration on key presses. Controlled per-keyboard-app on most devices — may not change every keyboard.",
             category = SettingCategory.HAPTICS,
             accessor = SettingAccessor.SystemSetting("haptic_feedback_keyboard"),
             androidDefaultValue = "1",
@@ -148,7 +148,8 @@ object SettingCatalogue {
             title               = "Battery Percentage in Status Bar",
             subtitle            = "Show numeric % next to battery icon. iOS 16+ default: on",
             category            = SettingCategory.DISPLAY,
-            accessor            = SettingAccessor.SecureSetting("status_bar_show_battery_percent"),
+            // Read by the framework from the System table, not Secure — writing to Secure no-ops.
+            accessor            = SettingAccessor.SystemSetting("status_bar_show_battery_percent"),
             androidDefaultValue = "0",
             iosDefaultValue     = "1",
         ),
@@ -174,7 +175,7 @@ object SettingCatalogue {
         PearitySetting(
             id                  = "haptic_on_soft_error",
             title               = "Haptic on Error",
-            subtitle            = "Vibrate when an incorrect input occurs. iOS: on",
+            subtitle            = "Vibrate when an incorrect input occurs. No confirmed system-wide key — best effort.",
             category            = SettingCategory.HAPTICS,
             accessor            = SettingAccessor.SystemSetting("haptic_feedback_enabled_error"),
             androidDefaultValue = "0",
@@ -241,9 +242,11 @@ object SettingCatalogue {
         PearitySetting(
             id                  = "night_display_auto",
             title               = "Night Mode / True Tone",
-            subtitle            = "Scheduled blue-light reduction (analogous to iOS Night Shift)",
+            subtitle            = "Blue-light reduction (analogous to iOS Night Shift)",
             category            = SettingCategory.DISPLAY,
-            accessor            = SettingAccessor.SecureSetting("night_display_auto_mode"),
+            // night_display_auto_mode picks *which schedule* runs (off/custom/twilight), it isn't an
+            // on/off switch; night_display_activated is the actual toggle this card claims to control.
+            accessor            = SettingAccessor.SecureSetting("night_display_activated"),
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
         ),
@@ -252,7 +255,8 @@ object SettingCatalogue {
             title               = "Peak Refresh Rate",
             subtitle            = "Max screen Hz. iOS ProMotion default: 120Hz. Matches adaptive display.",
             category            = SettingCategory.DISPLAY,
-            accessor            = SettingAccessor.GlobalSetting("peak_refresh_rate"),
+            // DisplayModeDirector reads this from the System table (added API 30), not Global.
+            accessor            = SettingAccessor.SystemSetting("peak_refresh_rate"),
             androidDefaultValue = "60.0",
             iosDefaultValue     = "120.0",
             unit                = "Hz",
@@ -262,7 +266,7 @@ object SettingCatalogue {
             title               = "Minimum Refresh Rate",
             subtitle            = "Floor Hz for adaptive display. iOS ProMotion: 10Hz (LTPO adaptive).",
             category            = SettingCategory.DISPLAY,
-            accessor            = SettingAccessor.GlobalSetting("min_refresh_rate"),
+            accessor            = SettingAccessor.SystemSetting("min_refresh_rate"),
             androidDefaultValue = "60.0",
             iosDefaultValue     = "10.0",
             unit                = "Hz",
@@ -281,7 +285,8 @@ object SettingCatalogue {
             title               = "Background Blur Effects",
             subtitle            = "Frosted-glass blur in sheets/panels. iOS blur: on. Disable = Reduce Transparency.",
             category            = SettingCategory.DISPLAY,
-            accessor            = SettingAccessor.GlobalSetting("disable_window_blur"),
+            // Real key is plural ("disable_window_blurs") and lives in System, not Global.
+            accessor            = SettingAccessor.SystemSetting("disable_window_blurs"),
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
         ),
@@ -408,8 +413,10 @@ object SettingCatalogue {
         PearitySetting(
             id                  = "location_mode",
             title               = "Location Accuracy Mode",
-            subtitle            = "High accuracy GPS. iOS default: on when in use",
+            subtitle            = "High accuracy GPS. Deprecated since Android 9 — may not take effect on this device.",
             category            = SettingCategory.SYSTEM,
+            // LOCATION_MODE is deprecated (API 28+); location accuracy now lives per-provider with no
+            // single documented replacement key, so this is kept best-effort rather than guessed at.
             accessor            = SettingAccessor.SecureSetting("location_mode"),
             androidDefaultValue = "3",
             iosDefaultValue     = "3",
@@ -496,7 +503,8 @@ object SettingCatalogue {
             title               = "Raise to Wake",
             subtitle            = "Lift phone to wake display. iOS default: on",
             category            = SettingCategory.SAMSUNG,
-            accessor            = SettingAccessor.SecureSetting("raise_to_wake_enabled"),
+            // "raise_to_wake_enabled" doesn't exist; AOSP's pickup-gesture key is doze_pulse_on_pick_up.
+            accessor            = SettingAccessor.SecureSetting("doze_pulse_on_pick_up"),
             androidDefaultValue = "1",
             iosDefaultValue     = "1",
         ),
@@ -505,7 +513,8 @@ object SettingCatalogue {
             title               = "Double-Tap to Wake",
             subtitle            = "Double-tap screen to wake. iOS single-taps; Samsung double-taps. iOS default: on",
             category            = SettingCategory.SAMSUNG,
-            accessor            = SettingAccessor.SecureSetting("double_tap_to_wake_enabled"),
+            // Real AOSP constant has no "_enabled" suffix.
+            accessor            = SettingAccessor.SecureSetting("double_tap_to_wake"),
             androidDefaultValue = "1",
             iosDefaultValue     = "1",
         ),
