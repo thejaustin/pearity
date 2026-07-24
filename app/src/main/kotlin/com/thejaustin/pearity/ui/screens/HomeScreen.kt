@@ -239,7 +239,9 @@ fun HomeScreen(
                             }
                         }
 
-                        AnimatedVisibility(
+                        // Qualified: inside the nav-rail Row the RowScope.AnimatedVisibility
+                        // extension would win overload resolution and fail across item {}
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = expanded,
                             enter = expandVertically() + fadeIn(),
                             exit = shrinkVertically() + fadeOut()
