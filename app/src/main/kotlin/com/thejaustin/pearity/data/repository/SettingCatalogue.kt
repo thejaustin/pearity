@@ -357,8 +357,11 @@ object SettingCatalogue {
         PearitySetting(
             id                  = "predictive_text",
             title               = "Predictive Text",
-            subtitle            = "Word suggestions above keyboard. iOS default: on",
+            subtitle            = "Word suggestions above keyboard. Controlled per-keyboard-app on Android — " +
+                                   "toggling here may not change every device's behaviour.",
             category            = SettingCategory.KEYBOARD,
+            // No system-wide settings key exists for this (unlike spell_checker_enabled above);
+            // word-suggestion strips are owned by each IME's own private prefs.
             accessor            = SettingAccessor.SecureSetting("input_method_auto_fill"),
             androidDefaultValue = "1",
             iosDefaultValue     = "1",
