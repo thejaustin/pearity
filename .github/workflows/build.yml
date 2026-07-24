@@ -83,6 +83,9 @@ jobs:
           cache-read-only: ${{ github.event_name != 'push' }}
           gradle-home-cache-cleanup: true
 
+      - name: Run unit tests
+        run: gradle testDebugUnitTest --no-daemon --no-configuration-cache
+
       - name: Build debug APK
         run: |
           gradle assembleDebug \

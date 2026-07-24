@@ -9,6 +9,7 @@ datastore = "1.1.1"
 activity = "1.9.3"
 coroutines = "1.8.1"
 kotlinx-serialization = "1.7.3"
+junit = "4.13.2"
 
 [libraries]
 compose-bom              = { group = "androidx.compose",          name = "compose-bom",                    version.ref = "compose-bom" }
@@ -32,6 +33,8 @@ shizuku-provider         = { group = "dev.rikka.shizuku",          name = "provi
 datastore                = { group = "androidx.datastore",         name = "datastore-preferences",          version.ref = "datastore" }
 coroutines               = { group = "org.jetbrains.kotlinx",      name = "kotlinx-coroutines-android",     version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx",    name = "kotlinx-serialization-json",     version.ref = "kotlinx-serialization" }
+
+junit                    = { group = "junit",                     name = "junit",                          version.ref = "junit" }
 
 [plugins]
 android-application      = { id = "com.android.application",            version.ref = "agp" }
