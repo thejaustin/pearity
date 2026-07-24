@@ -90,6 +90,18 @@ jobs:
             -PversionCode=${{ steps.version.outputs.version_code }} \
             --no-daemon --no-configuration-cache
 
+      # Only the debug APK ships (see "Publish to GitHub Releases" below); this build is a
+      # smoke test only, unsigned and discarded. It exists because minification (isMinifyEnabled
+      # = true, release-only) is never otherwise exercised — the debug build always skips R8, so a
+      # reflection/serialization keep-rule gap or a shrinker-only failure would ship silently
+      # without ever failing CI.
+      - name: Build release APK (R8 smoke test, not published)
+        run: |
+          gradle assembleRelease \
+            -PversionName=${{ steps.version.outputs.version_name }} \
+            -PversionCode=${{ steps.version.outputs.version_code }} \
+            --no-daemon --no-configuration-cache
+
       - name: Locate and rename APK
         run: |
           # find the produced APK regardless of exact sub-path
