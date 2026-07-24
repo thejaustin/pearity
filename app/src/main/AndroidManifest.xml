@@ -10,6 +10,11 @@
     <!-- WRITE_SECURE_SETTINGS is NOT grantable at runtime; granted via Shizuku/ADB -->
     <!-- Listed here for documentation; Shizuku shells out the actual write -->
 
+    <!-- Package visibility for the Shizuku manager app (Android 11+) -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
+
     <application android:name=".PearityApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

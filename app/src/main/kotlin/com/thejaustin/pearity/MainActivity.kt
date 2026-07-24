@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thejaustin.pearity.ui.screens.HomeScreen
 import com.thejaustin.pearity.ui.screens.SettingsScreen
@@ -39,8 +40,9 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
 
     /** Called after user responds to the Shizuku permission dialog */
     override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
-        // ViewModel will re-check status on next refreshShizuku() call.
-        // Nothing needed here — the banner auto-refreshes on re-composition.
+        // Same ViewModelStore as viewModel() in the composables, so this refreshes
+        // the banner and per-setting supported flags immediately after the grant.
+        ViewModelProvider(this)[MainViewModel::class.java].refreshShizuku()
     }
 }
 

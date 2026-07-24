@@ -17,9 +17,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.thejaustin.pearity.data.model.SettingState
 import com.thejaustin.pearity.ui.components.SettingCard
 import com.thejaustin.pearity.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,15 +29,14 @@ fun HomeScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    var searchActive by remember { mutableStateOf(false) }
     var navRailVisible by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { viewModel.refreshShizuku() }
 
-    // Build category list with icons
-    val categories = remember {
-        listOf(
+    val categoryIcons = remember {
+        mapOf(
             "Animations" to Icons.Outlined.SlowMotionVideo,
             "Text & Font" to Icons.Outlined.Title,
             "Sound" to Icons.Outlined.VolumeUp,
@@ -52,7 +51,8 @@ fun HomeScreen(
         )
     }
 
-    val visibleCategories = categories.filter { ui.settingsByCategory.containsKey(it.first) }
+    // Same source and order as the LazyColumn, so scroll indices line up
+    val visibleCategories = ui.settingsByCategory.keys.toList()
 
     fun scrollToCategory(categoryName: String) {
         // Calculate the target index based on list structure
@@ -61,12 +61,12 @@ fun HomeScreen(
         if (ui.smartSwitchBackupFound) targetIndex++
         if (!ui.shizukuAvailable || !ui.shizukuPermission) targetIndex++
         if (!ui.writeSettingsGranted) targetIndex++
-        
+
         // Find the category index
-        val categoryIndex = visibleCategories.indexOfFirst { it.first == categoryName }
+        val categoryIndex = visibleCategories.indexOf(categoryName)
         if (categoryIndex != -1) {
             targetIndex += categoryIndex
-            listState.animateScrollToItem(targetIndex)
+            scope.launch { listState.animateScrollToItem(targetIndex) }
         }
     }
 
@@ -82,11 +82,16 @@ fun HomeScreen(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ) {
                 Spacer(Modifier.height(12.dp))
-                visibleCategories.forEach { (name, icon) ->
+                visibleCategories.forEach { name ->
                     NavigationRailItem(
                         selected = false,
                         onClick = { scrollToCategory(name) },
-                        icon = { Icon(icon, contentDescription = name) },
+                        icon = {
+                            Icon(
+                                categoryIcons[name] ?: Icons.Outlined.Tune,
+                                contentDescription = name,
+                            )
+                        },
                         label = { Text(name) }
                     )
                 }
@@ -122,22 +127,28 @@ fun HomeScreen(
                         scrollBehavior = scrollBehavior,
                     )
 
-                    // ── Global Search Bar (M3 Expressive) ────────────────────────
+                    // ── Global Search Bar ────────────────────────────────────────
+                    // Docked (never expands): typing filters the list below live.
                     SearchBar(
                         query = ui.searchQuery,
                         onQueryChange = viewModel::onSearchQueryChanged,
-                        onSearch = { searchActive = false },
-                        active = searchActive,
-                        onActiveChange = { searchActive = it },
+                        onSearch = { },
+                        active = false,
+                        onActiveChange = { },
                         placeholder = { Text("Search settings...") },
                         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (ui.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                                    Icon(Icons.Outlined.Close, contentDescription = "Clear search")
+                                }
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = if (searchActive) 0.dp else 16.dp)
-                            .padding(bottom = if (searchActive) 0.dp else 8.dp)
-                    ) {
-                        // Results are shown in the main list below
-                    }
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 8.dp)
+                    ) { }
                 }
             },
         ) { padding ->
@@ -199,7 +210,9 @@ fun HomeScreen(
                 ui.settingsByCategory.forEach { (categoryName, settings) ->
 
                     item(key = "header_$categoryName") {
-                        var expanded by remember { mutableStateOf(false) }
+                        // Auto-expand while a search is active so matches are visible
+                        val searching = ui.searchQuery.isNotEmpty()
+                        var expanded by remember(searching) { mutableStateOf(searching) }
 
                         Surface(
                             onClick = { expanded = !expanded },

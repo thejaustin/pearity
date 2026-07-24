@@ -43,7 +43,6 @@ fun TriStateToggle(
                         fontWeight = if (state == optionState) FontWeight.SemiBold else FontWeight.Normal,
                     )
                 },
-                icon = { SegmentedButtonDefaults.ActiveIcon() },
             )
         }
     }

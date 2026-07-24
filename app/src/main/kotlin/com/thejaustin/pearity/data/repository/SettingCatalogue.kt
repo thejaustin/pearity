@@ -139,8 +139,9 @@ object SettingCatalogue {
                 readCmd  = "wm density",
                 writeCmd = "wm density {value}",
             ),
-            androidDefaultValue = "default",
-            iosDefaultValue     = "default",
+            // "wm density reset" restores the physical density; a numeric value overrides
+            androidDefaultValue = "reset",
+            iosDefaultValue     = "reset",
         ),
         PearitySetting(
             id                  = "battery_percentage",
@@ -192,12 +193,12 @@ object SettingCatalogue {
         ),
         PearitySetting(
             id                  = "screen_brightness_ios_low",
-            title               = "Minimum Brightness (Night)",
-            subtitle            = "iOS goes very dim. Android: extra_dim_intensity",
+            title               = "Extra Dim",
+            subtitle            = "Dims below minimum brightness, like iOS at its lowest. Default: off",
             category            = SettingCategory.DISPLAY,
-            accessor            = SettingAccessor.SecureSetting("accessibility_display_magnification_navbar_enabled"), // repurposed for demonstration
+            accessor            = SettingAccessor.SecureSetting("reduce_bright_colors_activated"),
             androidDefaultValue = "0",
-            iosDefaultValue     = "1",
+            iosDefaultValue     = "0",
         ),
         PearitySetting(
             id                  = "show_media_on_lockscreen",
@@ -369,7 +370,11 @@ object SettingCatalogue {
             title               = "Back Gesture Sensitivity",
             subtitle            = "Width of screen edge that triggers back swipe",
             category            = SettingCategory.NAVIGATION,
-            accessor            = SettingAccessor.SecureSetting("back_gesture_inset_scale_left"),
+            accessor            = SettingAccessor.ShellCommand(
+                readCmd  = "settings get secure back_gesture_inset_scale_left",
+                writeCmd = "settings put secure back_gesture_inset_scale_left {value}; " +
+                           "settings put secure back_gesture_inset_scale_right {value}",
+            ),
             androidDefaultValue = "1.0",
             iosDefaultValue     = "1.0",
             unit                = "×",

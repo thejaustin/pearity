@@ -33,7 +33,7 @@ Pearity writes privileged system settings, so it needs one of:
 If your device is rooted (Magisk / KernelSU), Pearity can use `su` directly. Select **Root** in the connection mode picker inside Settings.
 
 ### ADB / rish
-Advanced users can use the `rish` binary from Shizuku without the Shizuku daemon running in the background. Place `rish` at `~/rish` in Termux or `/data/local/tmp/rish` and select **ADB / rish** in Settings.
+Advanced users can place Shizuku's `rish` binary at `/data/local/tmp/rish` (must be executable) and select **ADB / rish** in Settings. Note: most devices block apps from reading `/data/local/tmp`, so prefer Shizuku or Root mode.
 
 ---
 
@@ -50,7 +50,7 @@ Advanced users can use the `rish` binary from Shizuku without the Shizuku daemon
 
 ## Settings catalogue
 
-Pearity currently manages **47 settings** across **11 categories**:
+Pearity currently manages **54 settings** across **11 categories** (highlights below):
 
 ### Animations
 | Setting | Android default | iOS default |
@@ -189,8 +189,8 @@ PearitySetting (data model)
     SettingsRepository
         ├─ reads current value via shell / Settings provider
         └─ writes new value via selected ConnectionMode:
-               AUTO → tries Shizuku, falls back to root, then rish
-               SHIZUKU → Shizuku API + rish binary
+               AUTO → tries root, then Shizuku, then rish
+               SHIZUKU → Shizuku API (remote shell process)
                ROOT → su shell
                ADB_RISH → rish binary only
             │

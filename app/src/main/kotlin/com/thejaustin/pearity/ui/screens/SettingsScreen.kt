@@ -1,6 +1,5 @@
 package com.thejaustin.pearity.ui.screens
 
-import android.app.Activity
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,8 +22,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thejaustin.pearity.viewmodel.ConnectionMode
 import com.thejaustin.pearity.viewmodel.MainViewModel
 import com.thejaustin.pearity.utils.CrashHandler
-import com.thejaustin.pearity.utils.SmartSwitchImporter
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,10 +41,7 @@ fun SettingsScreen(
     val backupPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
-        uri?.let { selectedUri ->
-            // Convert URI to path and scan for Smart Switch backup
-            viewModel.importSmartSwitchFromUri(selectedUri, context)
-        }
+        uri?.let { viewModel.importSmartSwitchFromUri(it) }
     }
 
     LaunchedEffect(Unit) {
@@ -171,6 +165,12 @@ fun SettingsScreen(
                     hasPermission = ui.shizukuPermission,
                     onRefresh     = viewModel::refreshShizuku,
                     onGrant       = viewModel::requestShizukuPermission,
+                )
+            }
+            item {
+                RootStatusCard(
+                    available = ui.rootAvailable,
+                    onRefresh = viewModel::refreshShizuku,
                 )
             }
 

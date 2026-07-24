@@ -12,9 +12,10 @@ import com.thejaustin.pearity.data.model.*
 import com.thejaustin.pearity.shizuku.RootHelper
 import com.thejaustin.pearity.shizuku.ShizukuHelper
 import com.thejaustin.pearity.viewmodel.ConnectionMode
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 private val Context.dataStore: DataStore<Preferences>
         by preferencesDataStore(name = "pearity")
@@ -25,53 +26,82 @@ class SettingsRepository(private val context: Context) {
 
     // ─── Read ─────────────────────────────────────────────────────────────────
 
-    fun readCurrentValue(setting: PearitySetting, mode: ConnectionMode): String? {
-        val cr: ContentResolver = context.contentResolver
-        return try {
-            when (val acc = setting.accessor) {
-                is SettingAccessor.SystemSetting  -> Settings.System.getString(cr, acc.key)
-                is SettingAccessor.SecureSetting  -> {
-                    if (canWriteSettingsDirectly()) Settings.Secure.getString(cr, acc.key)
-                    else runPrivilegedCommand("settings get secure ${acc.key}", mode).getOrNull()
+    /**
+     * Reading system/secure/global settings needs no permission, so always go
+     * through the ContentResolver; only ShellCommand accessors need a shell.
+     */
+    suspend fun readCurrentValue(setting: PearitySetting, mode: ConnectionMode): String? =
+        withContext(Dispatchers.IO) {
+            val cr: ContentResolver = context.contentResolver
+            try {
+                when (val acc = setting.accessor) {
+                    is SettingAccessor.SystemSetting -> Settings.System.getString(cr, acc.key)
+                    is SettingAccessor.SecureSetting -> Settings.Secure.getString(cr, acc.key)
+                    is SettingAccessor.GlobalSetting -> Settings.Global.getString(cr, acc.key)
+                    is SettingAccessor.ShellCommand  ->
+                        runPrivilegedCommand(acc.readCmd, mode).getOrNull()
+                            ?.let { parseShellReadOutput(acc.readCmd, it) }
                 }
-                is SettingAccessor.GlobalSetting  -> {
-                    if (canWriteSettingsDirectly()) Settings.Global.getString(cr, acc.key)
-                    else runPrivilegedCommand("settings get global ${acc.key}", mode).getOrNull()
-                }
-                is SettingAccessor.ShellCommand   -> runPrivilegedCommand(acc.readCmd, mode).getOrNull()
+            } catch (e: Exception) {
+                null
             }
-        } catch (e: Exception) {
-            null
         }
+
+    /** Normalise shell read output: "null" means unset, `wm density` prints prose. */
+    private fun parseShellReadOutput(readCmd: String, raw: String): String? {
+        if (raw.isBlank() || raw == "null") return null
+        if (readCmd.startsWith("wm density")) {
+            // "Physical density: 450" optionally followed by "Override density: 420"
+            val override = Regex("Override density: (\\d+)").find(raw)?.groupValues?.get(1)
+            return override ?: "reset"
+        }
+        return raw
     }
 
     // ─── Write ────────────────────────────────────────────────────────────────
 
-    suspend fun applyValue(setting: PearitySetting, value: String, mode: ConnectionMode): Result<Unit> {
-        return try {
-            if (setting.requiresShizuku) {
-                val cmd = buildShellCommand(setting, value)
-                runPrivilegedCommand(cmd, mode).map { }
-            } else {
-                // Runtime-grantable WRITE_SETTINGS path
-                if (!Settings.System.canWrite(context)) {
-                    return Result.failure(Exception("WRITE_SETTINGS permission not granted"))
-                }
+    suspend fun applyValue(setting: PearitySetting, value: String, mode: ConnectionMode): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                if (setting.requiresShizuku && !hasWriteSecureSettings()) {
+                    val cmd = buildShellCommand(setting, value)
+                    runPrivilegedCommand(cmd, mode).map { }
+                } else if (setting.requiresShizuku) {
+                    // WRITE_SECURE_SETTINGS granted (e.g. via adb) — write directly
+                    val cr = context.contentResolver
+                    val ok = when (val acc = setting.accessor) {
+                        is SettingAccessor.SystemSetting -> Settings.System.putString(cr, acc.key, value)
+                        is SettingAccessor.SecureSetting -> Settings.Secure.putString(cr, acc.key, value)
+                        is SettingAccessor.GlobalSetting -> Settings.Global.putString(cr, acc.key, value)
+                        is SettingAccessor.ShellCommand  ->
+                            return@withContext runPrivilegedCommand(
+                                buildShellCommand(setting, value), mode
+                            ).map { }
+                    }
+                    if (ok) Result.success(Unit)
+                    else Result.failure(Exception("putString returned false"))
+                } else {
+                    // Runtime-grantable WRITE_SETTINGS path
+                    if (!Settings.System.canWrite(context)) {
+                        return@withContext Result.failure(
+                            Exception("WRITE_SETTINGS permission not granted")
+                        )
+                    }
 
-                val cr = context.contentResolver
-                val ok = when (val acc = setting.accessor) {
-                    is SettingAccessor.SystemSetting -> Settings.System.putString(cr, acc.key, value)
-                    else -> return Result.failure(
-                        IllegalStateException("Non-system setting requires Shizuku/Root/ADB")
-                    )
+                    val cr = context.contentResolver
+                    val ok = when (val acc = setting.accessor) {
+                        is SettingAccessor.SystemSetting -> Settings.System.putString(cr, acc.key, value)
+                        else -> return@withContext Result.failure(
+                            IllegalStateException("Non-system setting requires Shizuku/Root/ADB")
+                        )
+                    }
+                    if (ok) Result.success(Unit)
+                    else Result.failure(Exception("putString returned false"))
                 }
-                if (ok) Result.success(Unit)
-                else Result.failure(Exception("putString returned false"))
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
-    }
 
     private fun runPrivilegedCommand(command: String, mode: ConnectionMode): Result<String> {
         return when (mode) {
@@ -80,9 +110,9 @@ class SettingsRepository(private val context: Context) {
             ConnectionMode.ADB_RISH -> ShizukuHelper.runCommandViaRish(command)
             ConnectionMode.AUTO     -> {
                 when {
-                    RootHelper.isAvailable    -> RootHelper.runCommand(command)
+                    RootHelper.isAvailable      -> RootHelper.runCommand(command)
                     ShizukuHelper.hasPermission -> ShizukuHelper.runCommand(command)
-                    else                       -> ShizukuHelper.runCommandViaRish(command)
+                    else                        -> ShizukuHelper.runCommandViaRish(command)
                 }
             }
         }
@@ -93,6 +123,7 @@ class SettingsRepository(private val context: Context) {
      */
     fun isSupported(setting: PearitySetting, mode: ConnectionMode): Boolean {
         if (!setting.requiresShizuku) return true // WRITE_SETTINGS is usually available eventually
+        if (hasWriteSecureSettings()) return true
 
         return when (mode) {
             ConnectionMode.ROOT     -> RootHelper.isAvailable
@@ -102,7 +133,7 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    private fun canWriteSettingsDirectly(): Boolean =
+    private fun hasWriteSecureSettings(): Boolean =
         context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
 

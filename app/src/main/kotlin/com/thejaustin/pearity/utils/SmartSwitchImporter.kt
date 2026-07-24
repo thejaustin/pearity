@@ -1,11 +1,12 @@
 package com.thejaustin.pearity.utils
 
+import android.content.Context
+import android.net.Uri
 import android.os.Environment
-import com.thejaustin.pearity.shizuku.ShizukuHelper
+import android.provider.DocumentsContract
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.security.MessageDigest
 
 @Serializable
 data class SmartSwitchApp(
@@ -93,6 +94,94 @@ object SmartSwitchImporter {
             null
         }
     }
+
+    // ─── SAF (document tree) import ──────────────────────────────────────────
+
+    data class TreeImportResult(
+        val apps: List<SmartSwitchApp>,
+        val deviceInfo: SmartSwitchDeviceInfo?,
+        val displayPath: String,
+    )
+
+    /**
+     * Parse a Smart Switch backup from a user-selected document tree.
+     * Accepts either the backup folder itself or a parent containing a
+     * "SmartSwitch" subfolder. Returns null if neither JSON file is found.
+     */
+    fun parseFromTree(context: Context, treeUri: Uri): TreeImportResult? {
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val files = findBackupJsonFiles(context, treeUri, rootId, depth = 0) ?: return null
+        val (appsJson, devInfoJson) = files
+
+        val apps = appsJson?.let {
+            try { json.decodeFromString<List<SmartSwitchApp>>(it) } catch (e: Exception) { emptyList() }
+        } ?: emptyList()
+        val devInfo = devInfoJson?.let {
+            try { json.decodeFromString<SmartSwitchDeviceInfo>(it) } catch (e: Exception) { null }
+        }
+
+        if (apps.isEmpty() && devInfo == null) return null
+        return TreeImportResult(apps, devInfo, treeUri.lastPathSegment ?: treeUri.toString())
+    }
+
+    /** Returns (iosApps.json content, devInfo.json content) or null if not found. */
+    private fun findBackupJsonFiles(
+        context: Context,
+        treeUri: Uri,
+        parentDocId: String,
+        depth: Int,
+    ): Pair<String?, String?>? {
+        if (depth > 2) return null
+
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+        var appsContent: String? = null
+        var devInfoContent: String? = null
+        val subDirs = mutableListOf<String>()
+
+        try {
+            context.contentResolver.query(
+                childrenUri,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                ),
+                null, null, null,
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val docId = cursor.getString(0)
+                    val name = cursor.getString(1)
+                    val mime = cursor.getString(2)
+                    when {
+                        name == "iosApps.json" -> appsContent = readDocument(context, treeUri, docId)
+                        name == "devInfo.json" -> devInfoContent = readDocument(context, treeUri, docId)
+                        mime == DocumentsContract.Document.MIME_TYPE_DIR &&
+                            name.equals("SmartSwitch", ignoreCase = true) -> subDirs.add(docId)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            return null
+        }
+
+        if (appsContent != null || devInfoContent != null) {
+            return appsContent to devInfoContent
+        }
+        for (dirId in subDirs) {
+            findBackupJsonFiles(context, treeUri, dirId, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    private fun readDocument(context: Context, treeUri: Uri, docId: String): String? =
+        try {
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            context.contentResolver.openInputStream(docUri)?.use {
+                it.bufferedReader().readText()
+            }
+        } catch (e: Exception) {
+            null
+        }
 
     /**
      * Deep scan for iOS system settings by locating Manifest.db and
@@ -229,10 +318,5 @@ object SmartSwitchImporter {
         suggestions["screen_off_timeout"] = "30000"
 
         return suggestions
-    }
-
-    private fun sha1(input: String): String {
-        val md = MessageDigest.getInstance("SHA-1")
-        return md.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 }
