@@ -45,14 +45,6 @@ android {
     buildFeatures {
         compose = true
     }
-
-    lint {
-        // AGP 8.7.3's bundled Lint crashes analyzing Kotlin test sources against the newer
-        // compose-runtime lint checks pulled in by Material3 1.4.0 stable (Kotlin Analysis API
-        // version skew: "Found class KaSimpleVariableAccessCall, but interface was expected").
-        // This is a lint-tooling bug (confirmed by lint's own crash message), not an app issue.
-        disable += "FrequentlyChangingValue"
-    }
 }
 
 dependencies {
