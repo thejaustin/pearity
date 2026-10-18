@@ -3,6 +3,7 @@ package com.thejaustin.pearity.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -14,7 +15,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,6 +26,7 @@ import com.thejaustin.pearity.viewmodel.ConnectionMode
 import com.thejaustin.pearity.viewmodel.MainViewModel
 import com.thejaustin.pearity.utils.CrashHandler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,9 +37,15 @@ fun SettingsScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
     var crashLog by remember { mutableStateOf<String?>(null) }
     var showCrashDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var exportedJson by remember { mutableStateOf<String?>(null) }
+    var showProfileImportDialog by remember { mutableStateOf(false) }
+    var importProfileText by remember { mutableStateOf("") }
     var importStatus by remember { mutableStateOf<String?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
 
@@ -108,6 +118,84 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showImportDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showExportDialog && exportedJson != null) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            icon = { Icon(Icons.Outlined.FileDownload, contentDescription = null) },
+            title = { Text("Export Configuration Profile") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Copy your configuration JSON to back up or restore on another device:",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Box(modifier = Modifier.heightIn(max = 280.dp)) {
+                        Text(
+                            text = exportedJson!!,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    clipboardManager.setText(AnnotatedString(exportedJson!!))
+                    showExportDialog = false
+                }) {
+                    Text("Copy to Clipboard")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    if (showProfileImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showProfileImportDialog = false },
+            icon = { Icon(Icons.Outlined.FileUpload, contentDescription = null) },
+            title = { Text("Import Configuration Profile") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Paste a Pearity profile JSON to restore your settings baseline:",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = importProfileText,
+                        onValueChange = { importProfileText = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 240.dp),
+                        placeholder = { Text("Paste JSON here...") },
+                        textStyle = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (importProfileText.isNotBlank()) {
+                            viewModel.importProfileFromJson(importProfileText)
+                            importProfileText = ""
+                            showProfileImportDialog = false
+                        }
+                    },
+                    enabled = importProfileText.isNotBlank(),
+                ) {
+                    Text("Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showProfileImportDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -195,6 +283,43 @@ fun SettingsScreen(
                     onImport = { showImportDialog = true },
                     onAutoImport = viewModel::importSmartSwitchData,
                 )
+            }
+
+            // ── Configuration Profiles ─────────────────────────────────────────
+            item {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Configuration Profiles",
+                    style      = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color      = MaterialTheme.colorScheme.primary,
+                )
+            }
+            item {
+                Card(shape = MaterialTheme.shapes.extraLarge) {
+                    Column {
+                        ListItem(
+                            headlineContent = { Text("Export Profile", style = MaterialTheme.typography.bodyMedium) },
+                            supportingContent = { Text("Backup current settings states and custom values to JSON", style = MaterialTheme.typography.labelSmall) },
+                            leadingContent = { Icon(Icons.Outlined.FileDownload, contentDescription = null) },
+                            modifier = Modifier.clickable {
+                                scope.launch {
+                                    exportedJson = viewModel.exportProfileJson()
+                                    showExportDialog = true
+                                }
+                            }
+                        )
+                        HorizontalDivider()
+                        ListItem(
+                            headlineContent = { Text("Import Profile", style = MaterialTheme.typography.bodyMedium) },
+                            supportingContent = { Text("Restore configuration states and baseline from JSON", style = MaterialTheme.typography.labelSmall) },
+                            leadingContent = { Icon(Icons.Outlined.FileUpload, contentDescription = null) },
+                            modifier = Modifier.clickable {
+                                showProfileImportDialog = true
+                            }
+                        )
+                    }
+                }
             }
 
             // ── Diagnostics ───────────────────────────────────────────────────

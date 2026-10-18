@@ -3,6 +3,7 @@ package com.thejaustin.pearity.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.thejaustin.pearity.data.model.PearityProfile
 import com.thejaustin.pearity.data.model.PearitySetting
 import com.thejaustin.pearity.data.model.SettingState
 import com.thejaustin.pearity.data.repository.SettingsRepository
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 
 // ─── UI models ────────────────────────────────────────────────────────────────
 
@@ -49,12 +51,15 @@ data class MainUiState(
     val rootAvailable: Boolean      = false,
     val writeSettingsGranted: Boolean = false,
     val isLoading: Boolean          = true,
+    val isBatchApplying: Boolean    = false,
+    val canUndoBatch: Boolean       = false,
     val connectionMode: ConnectionMode = ConnectionMode.AUTO,
     val smartSwitchBackupFound: Boolean = false,
     val smartSwitchBackupDir: String? = null,
     val smartSwitchApps: List<SmartSwitchApp> = emptyList(),
     val smartSwitchDeviceInfo: SmartSwitchDeviceInfo? = null,
     val searchQuery: String = "",
+    val userMessage: String? = null,
 )
 
 enum class ConnectionMode { AUTO, ROOT, SHIZUKU, ADB_RISH }
@@ -322,6 +327,86 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setConnectionMode(mode: ConnectionMode) {
         _ui.value = _ui.value.copy(connectionMode = mode)
         load() // Refresh with new mode
+    }
+
+    // ── Batch Actions & Profiles ──────────────────────────────────────────────
+
+    private var batchSnapshot: Map<String, SettingState>? = null
+    private val profileJsonFormat = Json { prettyPrint = true; ignoreUnknownKeys = true }
+
+    fun clearUserMessage() {
+        _ui.value = _ui.value.copy(userMessage = null)
+    }
+
+    /**
+     * Apply the iOS default value across all supported settings in one action.
+     * Captures a pre-batch snapshot so the user can undo at any time.
+     */
+    fun applyAllIosDefaults() {
+        if (_ui.value.isBatchApplying) return
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(isBatchApplying = true, userMessage = null)
+            val snapshot = _allSettings.associate { it.setting.id to it.state }
+            batchSnapshot = snapshot
+
+            val toApply = _allSettings.filter { it.supported && it.state != SettingState.IOS }
+            var appliedCount = 0
+
+            for (entry in toApply) {
+                applyStateInternal(entry.setting.id, SettingState.IOS)
+                appliedCount++
+            }
+
+            _ui.value = _ui.value.copy(
+                isBatchApplying = false,
+                canUndoBatch = true,
+                userMessage = "Applied iOS defaults across $appliedCount settings",
+            )
+        }
+    }
+
+    /**
+     * Undo the last batch application, restoring each setting to its pre-batch state.
+     */
+    fun undoBatchApply() {
+        val snapshot = batchSnapshot ?: return
+        if (_ui.value.isBatchApplying) return
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(isBatchApplying = true, userMessage = null)
+            var restoredCount = 0
+
+            for ((id, state) in snapshot) {
+                applyStateInternal(id, state)
+                restoredCount++
+            }
+
+            batchSnapshot = null
+            _ui.value = _ui.value.copy(
+                isBatchApplying = false,
+                canUndoBatch = false,
+                userMessage = "Restored snapshot across $restoredCount settings",
+            )
+        }
+    }
+
+    suspend fun exportProfileJson(): String = withContext(Dispatchers.IO) {
+        val profile = repo.exportProfile()
+        profileJsonFormat.encodeToString(PearityProfile.serializer(), profile)
+    }
+
+    fun importProfileFromJson(jsonText: String) {
+        viewModelScope.launch {
+            try {
+                val profile = withContext(Dispatchers.IO) {
+                    profileJsonFormat.decodeFromString(PearityProfile.serializer(), jsonText)
+                }
+                val count = repo.importProfile(profile)
+                load()
+                _ui.value = _ui.value.copy(userMessage = "Imported $count settings from profile")
+            } catch (e: Exception) {
+                _ui.value = _ui.value.copy(userMessage = "Profile import failed: ${e.message}")
+            }
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

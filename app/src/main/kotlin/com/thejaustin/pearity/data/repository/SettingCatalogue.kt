@@ -43,6 +43,15 @@ object SettingCatalogue {
             iosDefaultValue     = "0.5",
             unit                = "×",
         ),
+        PearitySetting(
+            id                  = "predictive_back_animation",
+            title               = "Predictive Back Animation",
+            subtitle            = "Preview previous screen during back gesture (iOS-style edge swipe preview). Android 14+.",
+            category            = SettingCategory.ANIMATIONS,
+            accessor            = SettingAccessor.GlobalSetting("predictive_back_animation"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "1",
+        ),
 
         // ── Text & Font ───────────────────────────────────────────────────────
         PearitySetting(
@@ -352,6 +361,16 @@ object SettingCatalogue {
             androidDefaultValue = "0",
             iosDefaultValue     = "0",
         ),
+        PearitySetting(
+            id                  = "show_touches",
+            title               = "Show Visual Touches",
+            subtitle            = "Visual circle feedback on screen touches. iOS default: off",
+            category            = SettingCategory.ACCESSIBILITY,
+            accessor            = SettingAccessor.SystemSetting("show_touches"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "0",
+            requiresShizuku     = false,
+        ),
 
         // ── Keyboard ─────────────────────────────────────────────────────────
         PearitySetting(
@@ -391,6 +410,17 @@ object SettingCatalogue {
             androidDefaultValue = "1.0",
             iosDefaultValue     = "1.0",
             unit                = "×",
+        ),
+        PearitySetting(
+            id                  = "swipe_down_notifications",
+            title               = "Swipe Down for Notifications",
+            subtitle            = "Swipe down anywhere on home screen to expand notification shade. iOS default: on",
+            category            = SettingCategory.NAVIGATION,
+            accessor            = SettingAccessor.SystemSetting("swipe_down_for_notification"),
+            androidDefaultValue = "1",
+            iosDefaultValue     = "1",
+            requiresShizuku     = false,
+            confidence          = KeyConfidence.COMMUNITY,
         ),
 
         // ── System ────────────────────────────────────────────────────────────
@@ -436,6 +466,24 @@ object SettingCatalogue {
             androidDefaultValue = "0",
             iosDefaultValue     = "1",
         ),
+        PearitySetting(
+            id                  = "heads_up_notifications",
+            title               = "Banner Notifications",
+            subtitle            = "Top pop-up banner alerts on incoming notifications. iOS default: on",
+            category            = SettingCategory.SYSTEM,
+            accessor            = SettingAccessor.GlobalSetting("heads_up_notifications_enabled"),
+            androidDefaultValue = "1",
+            iosDefaultValue     = "1",
+        ),
+        PearitySetting(
+            id                  = "camera_double_tap_power_disabled",
+            title               = "Double-Tap Power for Camera",
+            subtitle            = "Power button camera shortcut. iOS uses lock screen buttons; Android default: on (0).",
+            category            = SettingCategory.SYSTEM,
+            accessor            = SettingAccessor.SecureSetting("camera_double_tap_power_gesture_disabled"),
+            androidDefaultValue = "0",
+            iosDefaultValue     = "1",
+        ),
 
         // ── Lock Screen ───────────────────────────────────────────────────────
         PearitySetting(
@@ -463,6 +511,15 @@ object SettingCatalogue {
             subtitle            = "Reveal message/sender text on lock screen. iOS 'Show Previews': Always",
             category            = SettingCategory.LOCK_SCREEN,
             accessor            = SettingAccessor.SecureSetting("lock_screen_allow_private_notifications"),
+            androidDefaultValue = "1",
+            iosDefaultValue     = "1",
+        ),
+        PearitySetting(
+            id                  = "power_button_instantly_locks",
+            title               = "Power Button Instantly Locks",
+            subtitle            = "Instantly lock device when pressing the power button. iOS default: on",
+            category            = SettingCategory.LOCK_SCREEN,
+            accessor            = SettingAccessor.SecureSetting("lock_screen_power_button_instantly_locks"),
             androidDefaultValue = "1",
             iosDefaultValue     = "1",
         ),

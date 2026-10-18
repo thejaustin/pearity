@@ -111,7 +111,7 @@ class SettingCatalogueTest {
 
     @Test
     fun `catalogue size matches the README's claimed count`() {
-        // README.md says "54 settings" — this is the tripwire if either drifts.
-        assertEquals(54, all.size)
+        // README.md says "60 settings" — this is the tripwire if either drifts.
+        assertEquals(60, all.size)
     }
 }

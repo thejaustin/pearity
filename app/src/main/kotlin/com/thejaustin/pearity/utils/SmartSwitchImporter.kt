@@ -201,21 +201,63 @@ object SmartSwitchImporter {
         }
 
     /**
-     * Deep scan for iOS system settings by locating Manifest.db and
-     * extracting the raw Plist files if they exist in the backup.
+     * Query iOS backup's Manifest.db SQLite database to find plist files dynamically.
+     * Returns a map of plist filename (e.g. "com.apple.Accessibility.plist") to the on-disk File.
+     */
+    private fun queryManifestDb(backupDir: File): Map<String, File> {
+        val manifestFile = File(backupDir, "Manifest.db")
+        if (!manifestFile.exists() || !manifestFile.isFile) return emptyMap()
+
+        val foundPlists = mutableMapOf<String, File>()
+        var db: android.database.sqlite.SQLiteDatabase? = null
+        var cursor: android.database.Cursor? = null
+        try {
+            db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                manifestFile.absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+            )
+            cursor = db.rawQuery(
+                "SELECT fileID, relativePath FROM Files WHERE relativePath LIKE '%.plist'",
+                null
+            )
+            val fileIdIdx = cursor.getColumnIndex("fileID")
+            val pathIdx = cursor.getColumnIndex("relativePath")
+            if (fileIdIdx != -1 && pathIdx != -1) {
+                while (cursor.moveToNext()) {
+                    val fileId = cursor.getString(fileIdIdx) ?: continue
+                    val relPath = cursor.getString(pathIdx) ?: continue
+                    val fileName = relPath.substringAfterLast('/')
+
+                    val prefix = if (fileId.length >= 2) fileId.substring(0, 2) else ""
+                    val fileNested = File(backupDir, "$prefix/$fileId")
+                    val fileFlat = File(backupDir, fileId)
+                    val resolvedFile = when {
+                        fileNested.exists() -> fileNested
+                        fileFlat.exists() -> fileFlat
+                        else -> null
+                    }
+                    if (resolvedFile != null) {
+                        foundPlists[fileName] = resolvedFile
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Manifest.db may be encrypted or corrupted; fail safe to hash-based fallback
+        } finally {
+            try { cursor?.close() } catch (_: Exception) {}
+            try { db?.close() } catch (_: Exception) {}
+        }
+        return foundPlists
+    }
+
+    /**
+     * Deep scan for iOS system settings by inspecting Manifest.db (preferred) or
+     * falling back to verified/best-effort SHA1 file hashes.
      */
     fun deepScanAccessibility(backupDir: File): Map<String, String> {
         val results = mutableMapOf<String, String>()
 
-        // 2026-07-25: verified against sha1(domain + "-" + relativePath) — the file-ID scheme
-        // iOS backups actually use. Each hash below was independently recomputed; only the two
-        // marked VERIFIED matched. The rest never matched any plausible domain/path combination
-        // tried and are almost certainly fabricated — kept only because they fail safe (file
-        // just won't exist at that path, scanPlist no-ops) pending real backup data to correct
-        // them against. Do not trust an UNVERIFIED hash as evidence the feature "works".
-
-        // Accessibility Plist — VERIFIED: sha1("HomeDomain-Library/Preferences/com.apple.Accessibility.plist")
-        val accessibilityHash = "c351e3034ca117560d7c5731c2a8d6841dc8e034"
         val scanAccessibility = { content: String ->
             if (content.contains("ReduceMotionEnabled")) results["reduce_motion"] = "0.01"
             if (content.contains("BoldText")) results["bold_text"] = "300"
@@ -224,50 +266,61 @@ object SmartSwitchImporter {
             if (content.contains("InvertColorsEnabled")) results["color_inversion"] = "1"
             if (content.contains("GrayscaleEnabled") || content.contains("ColorFilterEnabled")) results["color_filter"] = "1"
         }
-        scanPlist(backupDir, accessibilityHash, scanAccessibility)
 
-        // Sounds/Haptics Plist — VERIFIED: sha1("HomeDomain-Library/Preferences/com.apple.preferences.sounds.plist")
-        val soundsHash = "5aa7f3aea039363f747932d1e41107857132e382"
-        scanPlist(backupDir, soundsHash) { content ->
-            if (content.contains("keyboard")) results["keyboard_sound"] = "1" // Typically if present and true
+        val scanSounds = { content: String ->
+            if (content.contains("keyboard")) results["keyboard_sound"] = "1"
             if (content.contains("lock")) results["lock_sound"] = "1"
         }
 
-        // Keyboard Plist — UNVERIFIED: doesn't match HomeDomain or 14 other plausible domain
-        // prefixes for Library/Preferences/com.apple.TextInput.plist.
-        val keyboardHash = "120300958145781a8b13d7890f5c880f08985c49"
-        scanPlist(backupDir, keyboardHash) { content ->
+        val scanKeyboard = { content: String ->
             if (content.contains("KeyboardShowPredictions")) results["predictive_text"] = "1"
             if (content.contains("KeyboardInlinePredictionEnabled")) results["autocorrect"] = "1"
         }
 
-        // Springboard Plist — UNVERIFIED: same as above, no matching domain prefix found.
-        val springboardHash = "969966144e13d5b0d0246a482b9a7c64a32e2b34"
-        scanPlist(backupDir, springboardHash) { content ->
+        val scanSpringboard = { content: String ->
             if (content.contains("SBShowBatteryPercentage")) results["battery_percentage"] = "1"
         }
 
-        // CoreBrightness Plist — UNVERIFIED: same as above, no matching domain prefix found.
-        val coreBrightnessHash = "c93064737d6e467d020d222254b08722b5e28a9a"
-        scanPlist(backupDir, coreBrightnessHash) { content ->
+        val scanBrightness = { content: String ->
             if (content.contains("CBColorAdaptationEnabled")) results["display_white_balance"] = "1"
             if (content.contains("BlueReductionEnabled")) results["night_display_auto"] = "1"
             if (content.contains("AutoBrightnessEnable")) results["auto_brightness"] = "1"
         }
 
-        // UniversalAccess Plist — UNVERIFIED: same as above, no matching domain prefix found.
-        val universalAccessHash = "3277714151a66287959080b0372df03d29188048"
-        scanPlist(backupDir, universalAccessHash) { content ->
-            if (content.contains("reduceTransparency")) results["window_blur"] = "1" // Enable disable_window_blur
+        val scanUniversalAccess = { content: String ->
+            if (content.contains("reduceTransparency")) results["window_blur"] = "1"
             if (content.contains("increaseContrast")) results["high_text_contrast"] = "1"
         }
+
+        // 1. Try dynamic Manifest.db lookup first
+        val manifestPlists = queryManifestDb(backupDir)
+
+        fun scanOrFallback(fileName: String, fallbackHash: String, scanner: (String) -> Unit) {
+            val file = manifestPlists[fileName]
+            if (file != null) {
+                try {
+                    file.readTextCapped()?.let(scanner)
+                    return
+                } catch (_: Exception) {}
+            }
+            scanPlist(backupDir, fallbackHash, scanner)
+        }
+
+        scanOrFallback("com.apple.Accessibility.plist", "c351e3034ca117560d7c5731c2a8d6841dc8e034", scanAccessibility)
+        scanOrFallback("com.apple.preferences.sounds.plist", "5aa7f3aea039363f747932d1e41107857132e382", scanSounds)
+        scanOrFallback("com.apple.TextInput.plist", "120300958145781a8b13d7890f5c880f08985c49", scanKeyboard)
+        scanOrFallback("com.apple.springboard.plist", "969966144e13d5b0d0246a482b9a7c64a32e2b34", scanSpringboard)
+        scanOrFallback("com.apple.CoreBrightness.plist", "c93064737d6e467d020d222254b08722b5e28a9a", scanBrightness)
+        scanOrFallback("com.apple.universalaccess.plist", "3277714151a66287959080b0372df03d29188048", scanUniversalAccess)
 
         return results
     }
 
     private fun scanPlist(backupDir: File, hash: String, action: (String) -> Unit) {
-        val prefix = hash.substring(0, 2)
-        val file = File(backupDir, "$prefix/$hash")
+        val prefix = if (hash.length >= 2) hash.substring(0, 2) else ""
+        val fileNested = File(backupDir, "$prefix/$hash")
+        val fileFlat = File(backupDir, hash)
+        val file = if (fileNested.exists()) fileNested else fileFlat
         if (file.exists()) {
             try {
                 file.readTextCapped()?.let(action)

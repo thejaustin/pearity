@@ -198,4 +198,28 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.data
             .map { it[stateKey(id)]?.let(SettingState::valueOf) ?: SettingState.CUSTOM }
             .first()
+
+    suspend fun exportProfile(): PearityProfile = withContext(Dispatchers.IO) {
+        val map = mutableMapOf<String, ProfileSettingEntry>()
+        for (setting in allSettings) {
+            val state = loadSettingState(setting.id)
+            val custom = loadCustomValue(setting.id)
+            map[setting.id] = ProfileSettingEntry(state = state, customValue = custom)
+        }
+        PearityProfile(settings = map)
+    }
+
+    suspend fun importProfile(profile: PearityProfile): Int = withContext(Dispatchers.IO) {
+        var count = 0
+        context.dataStore.edit { prefs ->
+            for ((id, entry) in profile.settings) {
+                prefs[stateKey(id)] = entry.state.name
+                if (entry.customValue != null) {
+                    prefs[customKey(id)] = entry.customValue
+                }
+                count++
+            }
+        }
+        count
+    }
 }
