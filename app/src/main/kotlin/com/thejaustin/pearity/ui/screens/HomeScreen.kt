@@ -31,8 +31,33 @@ fun HomeScreen(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var navRailVisible by rememberSaveable { mutableStateOf(true) }
+    var showBatchDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    if (showBatchDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatchDialog = false },
+            icon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = null) },
+            title = { Text("Apply All iOS Defaults?") },
+            text = {
+                Text("This will apply the iOS default values across all supported settings. A snapshot will be saved so you can undo anytime.")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showBatchDialog = false
+                    viewModel.applyAllIosDefaults()
+                }) {
+                    Text("Apply All")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     LaunchedEffect(Unit) { viewModel.refreshShizuku() }
 
@@ -121,6 +146,12 @@ fun HomeScreen(
                             }
                         },
                         actions = {
+                            IconButton(
+                                onClick = { showBatchDialog = true },
+                                enabled = !ui.isBatchApplying,
+                            ) {
+                                Icon(Icons.Outlined.AutoAwesome, contentDescription = "Apply All iOS Defaults")
+                            }
                             IconButton(onClick = onNavigateToSettings) {
                                 Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                             }
@@ -150,6 +181,10 @@ fun HomeScreen(
                             .padding(horizontal = 16.dp)
                             .padding(bottom = 8.dp)
                     ) { }
+
+                    if (ui.isBatchApplying) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                 }
             },
         ) { padding ->
@@ -171,6 +206,70 @@ fun HomeScreen(
                 contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+
+                // ── User Feedback Banner ──────────────────────────────────────────
+                if (ui.userMessage != null) {
+                    item(key = "user_message_banner") {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            ),
+                            shape = MaterialTheme.shapes.extraLarge,
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = ui.userMessage ?: "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = viewModel::clearUserMessage) {
+                                    Text("Dismiss")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Undo Batch Apply Banner ───────────────────────────────────────
+                if (ui.canUndoBatch) {
+                    item(key = "undo_batch_banner") {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            shape = MaterialTheme.shapes.extraLarge,
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "iOS Defaults Applied",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                    Text(
+                                        text = "A restore snapshot is ready if you want to undo.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                FilledTonalButton(onClick = viewModel::undoBatchApply) {
+                                    Text("Undo All")
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // ── Smart Switch Import banner ────────────────────────────────────
                 if (ui.smartSwitchBackupFound) {

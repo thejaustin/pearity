@@ -50,7 +50,7 @@ Advanced users can place Shizuku's `rish` binary at `/data/local/tmp/rish` (must
 
 ## Settings catalogue
 
-Pearity currently manages **54 settings** across **11 categories** (highlights below):
+Pearity currently manages **60 settings** across **11 categories** (highlights below):
 
 ### Animations
 | Setting | Android default | iOS default |
@@ -58,6 +58,7 @@ Pearity currently manages **54 settings** across **11 categories** (highlights b
 | Window Animation Speed | 1.0× | 0.5× |
 | Transition Animation Speed | 1.0× | 0.5× |
 | Animator Duration Scale | 1.0× | 0.5× |
+| Predictive Back Animation | off (0) | on (1) |
 
 ### Text
 | Setting | Android default | iOS default |
@@ -100,6 +101,7 @@ Pearity currently manages **54 settings** across **11 categories** (highlights b
 | Gesture Hint (Home Bar) | on | on |
 | Home Bar Width | 1.0× | 1.5× |
 | Back Gesture Sensitivity | 1.0× | 1.0× |
+| Swipe Down for Notifications | on | on |
 
 ### Keyboard
 | Setting | Android default | iOS default |
@@ -116,6 +118,7 @@ Pearity currently manages **54 settings** across **11 categories** (highlights b
 | Smart Invert / Color Inversion | off | off |
 | Color Filters | off | off |
 | One-Handed Mode | off | off |
+| Show Visual Touches | off | off |
 
 ### Lock Screen
 | Setting | Android default | iOS default |
@@ -124,6 +127,7 @@ Pearity currently manages **54 settings** across **11 categories** (highlights b
 | Lock Immediately on Sleep | 5000 ms | 0 ms |
 | Notifications on Lock Screen | on | on |
 | Show Notification Content | on | on |
+| Power Button Instantly Locks | on | on |
 
 ### Samsung One UI
 | Setting | Android default | iOS default |
@@ -147,6 +151,8 @@ Pearity currently manages **54 settings** across **11 categories** (highlights b
 | Screen Timeout | 15 000 ms | 30 000 ms |
 | Location Accuracy Mode | 3 | 3 |
 | Always-On Display | off | on (Pro) |
+| Banner Notifications | on | on |
+| Double-Tap Power for Camera | on (0) | off (1) |
 
 ---
 
