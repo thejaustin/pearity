@@ -186,16 +186,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val result = repo.applyValue(entry.setting, value, _ui.value.connectionMode)
             val outcome = result.getOrNull()
             if (outcome != null) {
-                repo.saveCustomValue(settingId, value)
-                repo.saveSettingState(settingId, SettingState.CUSTOM)
-                update(settingId) {
-                    it.copy(
-                        isApplying   = false,
-                        state        = SettingState.CUSTOM,
-                        currentValue = outcome.actualValue ?: value,
-                        customValue  = value,
-                        unverified   = !outcome.verified,
-                    )
+                // Persistence (DataStore) is unlikely but able to throw (e.g. disk full); if it
+                // does after a successful write, still clear isApplying instead of spinning forever.
+                try {
+                    repo.saveCustomValue(settingId, value)
+                    repo.saveSettingState(settingId, SettingState.CUSTOM)
+                    update(settingId) {
+                        it.copy(
+                            isApplying   = false,
+                            state        = SettingState.CUSTOM,
+                            currentValue = outcome.actualValue ?: value,
+                            customValue  = value,
+                            unverified   = !outcome.verified,
+                        )
+                    }
+                } catch (e: Exception) {
+                    update(settingId) { it.copy(isApplying = false, error = e.message, unverified = false) }
                 }
             } else {
                 update(settingId) {
@@ -252,14 +258,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val result = repo.applyValue(setting, targetValue, _ui.value.connectionMode)
         val outcome = result.getOrNull()
         if (outcome != null) {
-            repo.saveSettingState(settingId, newState)
-            update(settingId) {
-                it.copy(
-                    isApplying   = false,
-                    state        = newState,
-                    currentValue = outcome.actualValue ?: targetValue,
-                    unverified   = !outcome.verified,
-                )
+            // Persistence (DataStore) is unlikely but able to throw (e.g. disk full); if it does
+            // after a successful write, still clear isApplying instead of spinning forever.
+            try {
+                repo.saveSettingState(settingId, newState)
+                update(settingId) {
+                    it.copy(
+                        isApplying   = false,
+                        state        = newState,
+                        currentValue = outcome.actualValue ?: targetValue,
+                        unverified   = !outcome.verified,
+                    )
+                }
+            } catch (e: Exception) {
+                update(settingId) { it.copy(isApplying = false, error = e.message, unverified = false) }
             }
         } else {
             update(settingId) {
